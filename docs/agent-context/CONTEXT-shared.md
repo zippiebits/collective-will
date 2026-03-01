@@ -43,7 +43,7 @@ These are locked. Do not deviate.
 | **Evidence store** | PostgreSQL append-only hash-chain. No UPDATE/DELETE. |
 | **External anchoring** | Merkle root computation is required in v0 (daily). Publishing that root to Witness.co is optional and config-driven. |
 | **Ops observability console** | Add a separate `/ops` diagnostics surface for runtime health/events. In dev/staging it may appear in top navigation; in production it must be admin-auth gated and feature-flagged. Show structured, redacted operational events (health checks, recent errors, job status, webhook/email transport status), not raw container logs. |
-| **Infrastructure** | Njalla domain is registered (WHOIS privacy). Primary hosting is 1984.is VPS. Cloudflare (Free plan) is **active** as the edge proxy — DNS, CDN, DDoS protection, and Bot Fight Mode enabled. Caddy `trusted_proxies static` is configured with all Cloudflare IP ranges + `trusted_proxies_strict` to preserve real client IPs. Origin IP is private. Operator failover playbook + standby VPS must be documented. |
+| **Infrastructure** | Njalla domain is registered (WHOIS privacy). Primary hosting is 1984.is VPS. Cloudflare (Free plan) is **active** as the edge proxy — DNS, CDN, DDoS protection, and Bot Fight Mode enabled. Caddy `trusted_proxies static` is configured with all Cloudflare IP ranges + `trusted_proxies_strict` to preserve real client IPs. Production domain serves a static 503 maintenance page until the production stack is deployed (staging is the active environment). Deploy pipeline includes preflight checks, pull retries with backoff, and post-deploy health gates. Origin IP is private. Operator failover playbook + standby VPS must be documented. |
 
 ### Abuse Thresholds
 

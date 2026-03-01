@@ -37,20 +37,27 @@ jobs:
           script: |
             set -euo pipefail
             CADDY_APPLY="/usr/local/bin/cw-apply-caddy"
-            if [ ! -x "$CADDY_APPLY" ]; then
-              echo "ERROR: $CADDY_APPLY is missing or not executable."
-              echo "Install the wrapper and sudoers entry on the VPS before deploy."
-              exit 1
-            fi
+            CADDY_SRC="/opt/collective-will/repo-deploy/Caddyfile"
+            CADDY_DST="/etc/caddy/Caddyfile"
 
-            if [ "$(id -u)" -eq 0 ]; then
-              "$CADDY_APPLY"
-            elif command -v sudo >/dev/null 2>&1 && sudo -n "$CADDY_APPLY" >/dev/null 2>&1; then
-              sudo -n "$CADDY_APPLY"
+            if command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$CADDY_SRC" "$CADDY_DST"; then
+              echo "==> Caddyfile unchanged; skipping caddy apply"
             else
-              echo "ERROR: Deploy user cannot run $CADDY_APPLY non-interactively."
-              echo "Grant passwordless sudo for this command (or run deploy as root)."
-              exit 1
+              if [ ! -x "$CADDY_APPLY" ]; then
+                echo "ERROR: $CADDY_APPLY is missing or not executable."
+                echo "Install the wrapper and sudoers entry on the VPS before deploy."
+                exit 1
+              fi
+
+              if [ "$(id -u)" -eq 0 ]; then
+                "$CADDY_APPLY"
+              elif command -v sudo >/dev/null 2>&1 && sudo -n "$CADDY_APPLY" >/dev/null 2>&1; then
+                sudo -n "$CADDY_APPLY"
+              else
+                echo "ERROR: Deploy user cannot run $CADDY_APPLY non-interactively."
+                echo "Grant passwordless sudo for this command (or run deploy as root)."
+                exit 1
+              fi
             fi
 
             chmod +x /opt/collective-will/repo-deploy/deploy.sh

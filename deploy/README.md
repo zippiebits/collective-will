@@ -140,6 +140,35 @@ curl -s https://staging.yourdomain.com/api/health
 
 Then merge to `main` for production.
 
+## Built-in Deploy Safeguards
+
+`deploy/deploy.sh` now includes guard checks to reduce partial deploy risk:
+
+- Preflight checks:
+  - verifies compose has required services (`postgres`, `migrate`, `backend`, `scheduler`, `web`)
+  - verifies GHCR reachability (`https://ghcr.io/v2/`)
+  - verifies minimum disk and memory headroom
+- Pull retries with backoff:
+  - retries `docker compose pull` up to 3 times by default
+- Post-deploy health checks:
+  - verifies expected service count is running
+  - verifies web/backend local ports respond
+  - verifies Caddy host-header routing over both HTTP and HTTPS
+
+The GitHub Actions workflow also skips Caddy apply when `deploy/Caddyfile`
+has not changed, avoiding unnecessary Caddy reloads on app-only deploys.
+
+### Optional tuning knobs
+
+These environment variables can tune deploy behavior:
+
+- `PULL_RETRIES` (default: `3`)
+- `PULL_RETRY_BACKOFF_SECONDS` (default: `15`)
+- `HEALTH_RETRIES` (default: `12`)
+- `HEALTH_RETRY_INTERVAL_SECONDS` (default: `3`)
+- `MIN_DISK_AVAIL_GB` (default: `2`)
+- `MIN_MEM_AVAIL_MB` (default: `256`)
+
 ## Directory Layout (after first deploy)
 
 ```
@@ -163,7 +192,13 @@ Then merge to `main` for production.
 
 ## Caddy Routing
 
-The Caddyfile splits `/api/auth/*` between two services:
+**Production** currently serves a static 503 maintenance page since the
+production stack is not deployed yet.  When production is ready, replace
+the `respond` block in the `{$DOMAIN}` server block with the same
+`handle`/`reverse_proxy` routes from the staging block (using ports
+8000/3000 instead of 8100/3100).
+
+**Staging** Caddyfile splits `/api/auth/*` between two services:
 
 - **Backend** (FastAPI): `/api/auth/subscribe`, `/api/auth/verify/*`, `/api/auth/web-session`
 - **Web** (NextAuth): everything else under `/api/auth/*` (session, callback, etc.)

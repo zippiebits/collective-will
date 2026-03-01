@@ -1,34 +1,34 @@
-# Production: yourdomain.com
 # Set DOMAIN env var or replace these placeholders before use.
 
+# Production: maintenance page until production stack is deployed.
+# When ready, replace the respond block with the reverse_proxy routes
+# from the staging block (using ports 8000/3000 instead of 8100/3100).
 {$DOMAIN} {
-	handle /api/auth/subscribe {
-		uri strip_prefix /api
-		reverse_proxy localhost:8000
-	}
-
-	handle /api/auth/verify/* {
-		uri strip_prefix /api
-		reverse_proxy localhost:8000
-	}
-
-	handle /api/auth/web-session {
-		uri strip_prefix /api
-		reverse_proxy localhost:8000
-	}
-
-	handle /api/auth/* {
-		reverse_proxy localhost:3000
-	}
-
-	handle /api/* {
-		uri strip_prefix /api
-		reverse_proxy localhost:8000
-	}
-
-	handle {
-		reverse_proxy localhost:3000
-	}
+	header Content-Type "text/html; charset=utf-8"
+	respond <<HTML
+		<!DOCTYPE html>
+		<html lang="en" dir="ltr">
+		<head>
+			<meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1">
+			<title>Collective Will</title>
+			<style>
+				body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8fafc; color: #1e293b; }
+				.card { text-align: center; max-width: 480px; padding: 2rem; }
+				h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+				p { color: #64748b; line-height: 1.6; }
+				a { color: #6366f1; text-decoration: none; }
+			</style>
+		</head>
+		<body>
+			<div class="card">
+				<h1>Collective Will</h1>
+				<p>The production site is not live yet.</p>
+				<p>Visit <a href="https://staging.collectivewill.org">staging.collectivewill.org</a> for the current preview.</p>
+			</div>
+		</body>
+		</html>
+		HTML 503
 }
 
 # Staging: staging.yourdomain.com

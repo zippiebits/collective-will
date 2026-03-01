@@ -758,6 +758,18 @@ After:   Client → Cloudflare → Caddy (VPS) → Docker containers
      - Marked Cloudflare as active in `docs/infrastructure-guide.md` (updated architecture diagram, DNS section, settings)
      - Updated `docs/agent-context/CONTEXT-shared.md` Infrastructure frozen decision to reflect active CF + trusted proxies
 
+100a. [done] Deploy hardening — preflight checks, pull retries, post-deploy health gates
+      - `deploy/deploy.sh`: added `check_resource_headroom`, `check_ghcr_reachable`, `check_compose_services` preflight checks
+      - `deploy/deploy.sh`: added `pull_with_retry` with configurable retries and exponential backoff
+      - `deploy/deploy.sh`: added `wait_for_healthy_url` + `check_url_status` post-deploy health gates (container ports + Caddy routes)
+      - `.github/workflows/deploy.yml`: increased SSH `command_timeout` to 20m; conditional Caddy apply (only when Caddyfile changed)
+      - `deploy/README.md`: documented safeguards and tuning env vars
+
+100b. [done] Production maintenance page
+      - `deploy/Caddyfile`: replaced production reverse_proxy routes with a static 503 HTML maintenance page
+      - Eliminates 502 log noise from bot scans hitting absent production containers
+      - Health gate updated to accept any non-000 status (503 is valid for maintenance)
+
 ### P1 — Email: Verify Domain in Resend + Future SMTP Migration Path
 
 **Status: Domain verified and live. SMTP migration path pending (code items 101–102).**
