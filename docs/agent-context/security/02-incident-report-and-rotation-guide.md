@@ -2,7 +2,8 @@
 
 **Incident**: Next.js RCE → Cryptomining  
 **Date**: 2025-03-02  
-**Severity**: Critical
+**Severity**: Critical  
+**Status**: Remediated and verified clean (patched image deployed 2025-03-02)
 
 ---
 

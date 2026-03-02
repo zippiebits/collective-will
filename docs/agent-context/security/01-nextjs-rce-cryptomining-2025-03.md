@@ -2,7 +2,22 @@
 
 **Date**: 2025-03-02  
 **Severity**: Critical (CVSS 10.0 RCE, exploited in production)  
-**Status**: Remediated
+**Status**: Remediated and verified clean
+
+---
+
+## Post-Deploy Verification (2025-03-02)
+
+After deploying the patched image, staging was verified clean:
+
+| Check | Result |
+|-------|--------|
+| Miner binaries (vHN6YfrC, MnDW78UK, PM) | Not present |
+| wget/curl in container | Removed |
+| .next directory | Read-only (`dr-xr-x`), only legitimate Next.js build files |
+| Processes | Only `next-server` |
+| Zombie processes | None |
+| Next.js version | 15.5.12 (patched) |
 
 ---
 
