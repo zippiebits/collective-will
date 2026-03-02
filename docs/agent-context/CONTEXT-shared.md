@@ -44,6 +44,7 @@ These are locked. Do not deviate.
 | **External anchoring** | Merkle root computation is required in v0 (daily). Publishing that root to Witness.co is optional and config-driven. |
 | **Ops observability console** | Add a separate `/ops` diagnostics surface for runtime health/events. In dev/staging it may appear in top navigation; in production it must be admin-auth gated and feature-flagged. Show structured, redacted operational events (health checks, recent errors, job status, webhook/email transport status), not raw container logs. |
 | **Infrastructure** | Njalla domain is registered (WHOIS privacy). Primary hosting is 1984.is VPS. Cloudflare (Free plan) is **active** as the edge proxy — DNS, CDN, DDoS protection, and Bot Fight Mode enabled. Caddy `trusted_proxies static` is configured with all Cloudflare IP ranges + `trusted_proxies_strict` to preserve real client IPs. Production domain serves a static 503 maintenance page until the production stack is deployed (staging is the active environment). Deploy pipeline includes preflight checks, pull retries with backoff, and post-deploy health gates. Origin IP is private. Operator failover playbook + standby VPS must be documented. |
+| **Web dependency security** | Next.js ≥15.5.12, React ≥19.0.1 (patched for CVE-2025-66478). No wget/curl in web runtime image. Deploy SSH timeout 10m — do not lengthen to mask anomalies. Full incident context: `docs/agent-context/security/01-nextjs-rce-cryptomining-2025-03.md`. |
 
 ### Abuse Thresholds
 

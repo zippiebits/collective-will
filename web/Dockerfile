@@ -19,11 +19,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs \
+    && apk del wget curl busybox-extras 2>/dev/null; \
+       rm -f /usr/bin/wget /usr/bin/curl 2>/dev/null; true
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+RUN chmod -R a-w /app/.next /app/server.js /app/package.json 2>/dev/null; true
 
 USER nextjs
 EXPOSE 3000

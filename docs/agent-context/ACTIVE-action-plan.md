@@ -58,6 +58,15 @@ after signup.
     - Added test for `require_contribution=False` vote eligibility
     - Updated webhook tests with correct mock paths
 
+### P0 — Security: Next.js RCE Cryptomining Incident (2025-03, Done)
+
+- [done] Remediate Next.js RCE → XMRig cryptomining compromise on staging
+  - Upgraded Next.js 15.2.0 → 15.5.12, React 19.0.0 → 19.0.1 (CVE-2025-66478)
+  - Hardened web Dockerfile: remove wget/curl from runtime, read-only .next
+  - Deploy timeout set to 10m (fail fast on anomalies)
+  - Incident doc: `docs/agent-context/security/01-nextjs-rce-cryptomining-2025-03.md`
+  - Operator action required: rotate all VPS secrets, GHCR PAT, GitHub Actions secrets
+
 ### P0 — Resolve Critical Runtime Gaps (Done)
 
 1. [done] Implement autonomous dispute resolution workflow
