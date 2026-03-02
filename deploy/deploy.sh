@@ -254,8 +254,8 @@ wait_for_healthy_url "web container on :${WEB_PORT}" "http://127.0.0.1:${WEB_POR
 wait_for_healthy_url "backend openapi on :${BACKEND_PORT}" "http://127.0.0.1:${BACKEND_PORT}/openapi.json"
 
 echo "==> Verifying Caddy routes..."
-CADDY_HTTP_STATUS="$(check_url_status "http://127.0.0.1/" -H "Host: ${CADDY_HOST}")"
-CADDY_HTTPS_STATUS="$(check_url_status "https://127.0.0.1/" -k -H "Host: ${CADDY_HOST}")"
+CADDY_HTTP_STATUS="$(check_url_status "http://${CADDY_HOST}/" --resolve "${CADDY_HOST}:80:127.0.0.1")"
+CADDY_HTTPS_STATUS="$(check_url_status "https://${CADDY_HOST}/" --resolve "${CADDY_HOST}:443:127.0.0.1" -k)"
 echo "==> Caddy HTTP (${CADDY_HOST}): ${CADDY_HTTP_STATUS}"
 echo "==> Caddy HTTPS (${CADDY_HOST}): ${CADDY_HTTPS_STATUS}"
 
