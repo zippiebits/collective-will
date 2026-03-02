@@ -102,7 +102,7 @@ export default function VerifyPage() {
                 href={`/${locale}/signup`}
                 className="mt-6 inline-block rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
               >
-                {signupT("stepEmail")}
+                {t("errorCta")}
               </Link>
             </div>
           </Card>

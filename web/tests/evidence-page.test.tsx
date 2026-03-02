@@ -56,7 +56,7 @@ describe("EvidencePage", () => {
     await act(async () => {
       render(<EvidencePage />);
     });
-    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Evidence Chain");
+    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Audit Trail");
     expect(screen.getByRole("button", {name: /verify chain/i})).toBeTruthy();
   });
 

@@ -63,6 +63,11 @@ type UnclusteredResponse = {
   items: UnclusteredItem[];
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("analytics");
+  return { title: t("pageTitle") };
+}
+
 export default async function AnalyticsPage() {
   const t = await getTranslations("analytics");
   const locale = await getLocale();

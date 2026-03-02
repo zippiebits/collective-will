@@ -49,14 +49,19 @@ describe("NavBar", () => {
     expect(screen.getAllByText("My Activity").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders Audit link text", () => {
+  it("renders Audit Trail link text", () => {
     render(<NavBar showOpsLink={false} />);
-    expect(screen.getAllByText("Audit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Audit Trail").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders Ops link when flag is enabled", () => {
-    render(<NavBar showOpsLink />);
+  it("renders Ops link when flag is enabled and user is logged in", () => {
+    render(<NavBar showOpsLink userEmail="admin@example.com" />);
     expect(screen.getAllByText("Ops").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("hides Ops link when user is not logged in", () => {
+    render(<NavBar showOpsLink />);
+    expect(screen.queryByText("Ops")).toBeNull();
   });
 
   it("renders the language switcher buttons", () => {

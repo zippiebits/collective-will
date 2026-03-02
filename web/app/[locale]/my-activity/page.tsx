@@ -52,6 +52,11 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "info" | "neutral">
   rejected: "error" as "warning",
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("dashboard");
+  return { title: t("title") };
+}
+
 export default async function DashboardPage() {
   const accessToken = await getBackendAccessToken();
   const t = await getTranslations("dashboard");

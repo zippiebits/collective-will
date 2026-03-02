@@ -37,7 +37,7 @@ describe("DashboardPage", () => {
     mockFetchSequence([], []);
     const jsx = await DashboardPage();
     render(jsx);
-    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Dashboard");
+    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("My Activity");
     expect(screen.getByText(/Total Submissions/)).toBeTruthy();
     expect(screen.getByText(/Total Votes/)).toBeTruthy();
   });

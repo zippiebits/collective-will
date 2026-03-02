@@ -25,7 +25,7 @@ export function NavBar({showOpsLink, userEmail}: NavBarProps) {
     {href: `/${locale}/collective-concerns`, label: t("analytics")},
     {href: `/${locale}/collective-concerns/community-votes`, label: t("communityVotes")},
     {href: `/${locale}/collective-concerns/evidence`, label: t("audit")},
-    ...(showOpsLink ? [{href: `/${locale}/ops`, label: t("ops")}] : []),
+    ...(showOpsLink && userEmail ? [{href: `/${locale}/ops`, label: t("ops")}] : []),
   ];
 
   const isActive = (href: string) => pathname === href;
@@ -33,7 +33,7 @@ export function NavBar({showOpsLink, userEmail}: NavBarProps) {
   return (
     <nav
       role="navigation"
-      aria-label="Main navigation"
+      aria-label={t("ariaLabel")}
       className="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/80"
     >
       {/* Top row: title + (desktop links) + user/lang */}

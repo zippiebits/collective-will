@@ -38,6 +38,11 @@ const STEPS = [
   },
 ];
 
+export async function generateMetadata() {
+  const t = await getTranslations("landing");
+  return { title: t("headline") };
+}
+
 export default async function LandingPage() {
   const t = await getTranslations("landing");
   const nav = await getTranslations("nav");
@@ -85,6 +90,9 @@ export default async function LandingPage() {
               <p className="mt-2 text-sm font-medium text-gray-700 dark:text-slate-300">
                 {t(step.key)}
               </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                {t(`${step.key}Description`)}
+              </p>
             </div>
           ))}
         </div>
@@ -111,7 +119,7 @@ export default async function LandingPage() {
             {t("trustDescription")}
           </p>
           <Link
-            href="./collective-concerns/evidence"
+            href={`/${locale}/collective-concerns/evidence`}
             className="mt-4 inline-block text-sm font-semibold text-accent hover:underline"
           >
             {nav("audit")} →

@@ -347,6 +347,7 @@ export default function EvidencePage() {
       </div>
 
       {/* Pagination */}
+      {total > 0 && (
       <div className="flex items-center justify-center gap-2">
         <button
           onClick={() => setPage(Math.max(1, page - 1))}
@@ -368,6 +369,7 @@ export default function EvidencePage() {
           Next →
         </button>
       </div>
+      )}
     </PageShell>
   );
 }

@@ -1,8 +1,9 @@
 import {ReactNode} from "react";
 import {NextIntlClientProvider} from "next-intl";
-import {getMessages} from "next-intl/server";
+import {getMessages, getTranslations} from "next-intl/server";
 import {Inter} from "next/font/google";
 
+import {Footer} from "@/components/Footer";
 import {NavBar} from "@/components/NavBar";
 import {auth} from "@/lib/auth";
 import "../globals.css";
@@ -17,6 +18,20 @@ type Props = {
   children: ReactNode;
   params: Promise<{locale: "fa" | "en"}>;
 };
+
+export async function generateMetadata({params}: {params: Promise<{locale: string}>}) {
+  const {locale} = await params;
+  const t = await getTranslations({locale, namespace: "common"});
+  return {
+    title: {
+      template: `%s | ${t("appTitle")}`,
+      default: t("appTitle"),
+    },
+    description: locale === "fa"
+      ? "ایرانیان چه می‌خواهند؟ به ما کمک کنید تا بفهمیم."
+      : "What do Iranians want? Help us find out.",
+  };
+}
 
 export default async function LocaleLayout({children, params}: Props) {
   const {locale} = await params;
@@ -34,6 +49,7 @@ export default async function LocaleLayout({children, params}: Props) {
           <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
             {children}
           </main>
+          <Footer />
         </NextIntlClientProvider>
       </body>
     </html>

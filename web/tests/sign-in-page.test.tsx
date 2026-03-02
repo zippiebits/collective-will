@@ -11,7 +11,7 @@ describe("SignInPage", () => {
 
   it("renders heading, email input, and submit button", () => {
     render(<SignInPage />);
-    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Sign in");
+    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Sign In");
     expect(screen.getByRole("textbox")).toBeTruthy();
     expect(screen.getByRole("button", {name: /send verification link/i})).toBeTruthy();
   });

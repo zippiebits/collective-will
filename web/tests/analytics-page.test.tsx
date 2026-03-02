@@ -27,7 +27,7 @@ describe("AnalyticsPage", () => {
     mockFetchSequence([], noStats, {total: 0, items: []});
     const jsx = await AnalyticsPage();
     render(jsx);
-    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Community Priorities");
+    expect(screen.getByRole("heading", {level: 1})).toHaveTextContent("Collective Concerns");
   });
 
   it("shows empty state when no concern groups", async () => {
@@ -97,7 +97,7 @@ describe("AnalyticsPage", () => {
     render(jsx);
     const topLink = screen.getByRole("link", {name: /Community Votes/});
     expect(topLink.getAttribute("href")).toBe("/en/collective-concerns/community-votes");
-    const evidenceLink = screen.getByRole("link", {name: /Evidence Chain/});
+    const evidenceLink = screen.getByRole("link", {name: /Audit Trail/});
     expect(evidenceLink.getAttribute("href")).toBe("/en/collective-concerns/evidence");
   });
 

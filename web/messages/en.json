@@ -4,9 +4,10 @@
     "analytics": "Collective Concerns",
     "dashboard": "My Activity",
     "about": "About",
-    "audit": "Audit",
+    "audit": "Audit Trail",
     "communityVotes": "Community Votes",
-    "ops": "Ops"
+    "ops": "Ops",
+    "ariaLabel": "Main navigation"
   },
   "common": {
     "appTitle": "Collective Will",
@@ -14,9 +15,14 @@
     "submit": "Submit",
     "loading": "Loading...",
     "error": "An error occurred",
+    "errorDescription": "Something went wrong. Please try again.",
+    "retry": "Try again",
     "login": "Sign In",
     "logout": "Sign Out",
-    "signup": "Sign Up"
+    "signup": "Sign Up",
+    "backToHome": "Back to Home",
+    "pageNotFound": "Page not found",
+    "pageNotFoundDescription": "The page you're looking for doesn't exist or has been moved."
   },
   "landing": {
     "headline": "What do Iranians want? Help us find out.",
@@ -28,13 +34,27 @@
     "errorMessage": "Something went wrong. Please try again.",
     "howItWorks": "How it works",
     "step1": "Submit your concern via Telegram",
+    "step1Description": "Tell us what matters to you, in your own words.",
     "startBot": "Start the Bot on Telegram",
     "step2": "AI organizes without editorializing",
+    "step2Description": "Your concern is grouped with similar ones — no human editing.",
     "step3": "Community votes on priorities",
+    "step3Description": "Everyone gets an equal voice in deciding what matters most.",
     "step4": "Results are public and auditable",
+    "step4Description": "Every step is logged in a tamper-proof chain anyone can verify.",
     "trustTitle": "Everything is auditable",
     "trustDescription": "Every step is logged. Nothing is hidden.",
     "joinCta": "Join Now"
+  },
+  "signIn": {
+    "title": "Sign In",
+    "subtitle": "Enter your email to receive a verification link",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "emailSubmit": "Send verification link",
+    "emailSending": "Sending...",
+    "successMessage": "Check your email for the sign-in link.",
+    "errorMessage": "Could not send sign-in link. Please try again."
   },
   "signup": {
     "title": "Create Your Account",
@@ -67,12 +87,13 @@
     "errorTitle": "Verification Failed",
     "errorExpired": "This link has expired. Please sign up again to get a new one.",
     "errorInvalid": "This link is invalid. Please sign up again.",
+    "errorCta": "Sign Up Again",
     "alreadyHaveAccount": "Already have an account?",
     "signIn": "Sign In",
     "goToDashboard": "Go to Dashboard"
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "My Activity",
     "overview": "Overview",
     "submissions": "Submissions",
     "votes": "Votes",
@@ -83,7 +104,7 @@
     "totalSubmissions": "Total Submissions",
     "totalVotes": "Total Votes",
     "accountStatus": "Account Status",
-    "whatsappStatus": "Telegram Status",
+    "telegramStatus": "Telegram Status",
     "openDispute": "Open Dispute",
     "underReview": "Under automated review",
     "resolved": "Resolved",
@@ -93,9 +114,9 @@
     "reason": "Reason (optional)"
   },
   "analytics": {
-    "pageTitle": "Community Priorities",
+    "pageTitle": "Collective Concerns",
     "pageDescription": "Citizen submissions are organized by AI into concern groups around shared policy topics. Groups that gain enough community support enter the voting ballot.",
-    "clusters": "Grouped Concerns",
+    "clusters": "Concern Groups",
     "communityVotes": "Community Votes",
     "communityVotesDescription": "When grouped concerns gain enough community support, they enter the voting ballot. View active voting cycles and results from past votes.",
     "noVotesYet": "No voting cycles have started yet. Concerns that gain enough support will appear here for voting.",
@@ -103,13 +124,13 @@
     "activeVotingSection": "Active Ballot",
     "archivedVotingSection": "Past Voting Results",
     "activeVotes": "Active Votes",
-    "archivedVotes": "Archived Votes",
+    "archivedVotes": "Past Votes",
     "votersSoFar": "{count} voters so far",
     "resultsAfterClose": "Results revealed when voting ends",
     "optionVotes": "{count} votes",
-    "noActiveVotes": "No active voting cycle right now.",
+    "noActiveVotes": "No active voting cycle right now. Check back soon.",
     "ballotQuestion": "Ballot Question",
-    "evidence": "Evidence Chain",
+    "evidence": "Audit Trail",
     "noClusters": "No grouped concerns yet.",
     "noCycles": "No voting cycles completed yet.",
     "submissions": "Submissions",
@@ -124,7 +145,7 @@
     "archivedConcernsDescription": "These concerns have been included in a voting cycle and are no longer accepting new submissions.",
     "noArchivedConcerns": "No archived concerns yet.",
     "clusteredConcerns": "Clustered Concerns",
-    "unclustered": "Ungrouped",
+    "unclustered": "Awaiting Grouping",
     "verifyChain": "Verify Chain",
     "chainValid": "Chain is valid",
     "chainInvalid": "Chain is broken",
@@ -180,6 +201,13 @@
     "submissionNotFoundDescription": "This submission could not be found. It may have been removed or the link is invalid.",
     "submissionRedirecting": "Finding your submission…",
     "backToCollectiveConcerns": "Back to Collective Concerns"
+  },
+  "footer": {
+    "copyright": "Collective Will",
+    "tagline": "Transparent, AI-organized civic engagement.",
+    "telegram": "Telegram Bot",
+    "source": "Source Code",
+    "privacy": "Privacy"
   },
   "ops": {
     "title": "Ops Console",

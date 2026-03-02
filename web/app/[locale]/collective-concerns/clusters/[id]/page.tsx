@@ -30,6 +30,11 @@ type Props = {
   params: Promise<{id: string}>;
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("analytics");
+  return { title: t("clusters") };
+}
+
 export default async function ClusterDetailPage({params}: Props) {
   const {id} = await params;
   const t = await getTranslations("analytics");

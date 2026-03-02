@@ -59,6 +59,11 @@ type OpsPageProps = {
   searchParams?: Promise<{cid?: string; level?: string; type?: string}>;
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("ops");
+  return { title: t("title") };
+}
+
 export default async function OpsPage({searchParams}: OpsPageProps) {
   const t = await getTranslations("ops");
   const locale = await getLocale();

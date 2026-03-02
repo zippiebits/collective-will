@@ -76,6 +76,11 @@ type RankedPolicy = {
   options?: ResultOption[];
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("analytics");
+  return { title: t("communityVotes") };
+}
+
 export default async function CommunityVotesPage() {
   const t = await getTranslations("analytics");
   const locale = await getLocale();
@@ -101,11 +106,13 @@ export default async function CommunityVotesPage() {
         {t("communityVotesDescription")}
       </p>
 
-      <div className="grid grid-cols-2 gap-4">
-        <MetricCard
-          label={t("activeVotes")}
-          value={hasActiveBallot ? ballot.clusters.length.toLocaleString() : "0"}
-        />
+      <div className={`grid gap-4 ${hasActiveBallot ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2"}`}>
+        {hasActiveBallot && (
+          <MetricCard
+            label={t("activeVotes")}
+            value={ballot.clusters.length.toLocaleString()}
+          />
+        )}
         <MetricCard
           label={t("archivedVotes")}
           value={ranked.length.toLocaleString()}
