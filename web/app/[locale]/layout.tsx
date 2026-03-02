@@ -16,7 +16,7 @@ const inter = Inter({
 
 type Props = {
   children: ReactNode;
-  params: Promise<{locale: "fa" | "en"}>;
+  params: Promise<{locale: string}>;
 };
 
 export async function generateMetadata({params}: {params: Promise<{locale: string}>}) {
