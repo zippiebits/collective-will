@@ -33,6 +33,13 @@
 
 # Staging: staging.yourdomain.com
 staging.{$DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	header X-Frame-Options "DENY"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	header X-XSS-Protection "0"
+	header -Server
+
 	handle /api/auth/subscribe {
 		uri strip_prefix /api
 		reverse_proxy localhost:8100

@@ -10,7 +10,7 @@ describe("SignupPage", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({status: "pending_verification", token: "abc"}),
+        json: () => Promise.resolve({status: "pending_verification"}),
       }),
     );
   });

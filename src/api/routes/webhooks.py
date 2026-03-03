@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 from typing import Any
 
@@ -50,6 +51,11 @@ async def telegram_webhook(
     settings = get_settings()
     if not settings.telegram_bot_token:
         raise HTTPException(status_code=404)
+
+    if settings.telegram_webhook_secret:
+        header_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not hmac.compare_digest(header_secret, settings.telegram_webhook_secret):
+            raise HTTPException(status_code=401, detail="invalid signature")
 
     try:
         payload: dict[str, Any] = await request.json()

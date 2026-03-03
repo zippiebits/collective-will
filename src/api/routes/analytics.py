@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.connection import get_db
-from src.db.evidence import EvidenceLogEntry, isoformat_z
+from src.db.evidence import VALID_EVENT_TYPES, EvidenceLogEntry, isoformat_z
 from src.db.evidence import verify_chain as db_verify_chain
 from src.models.cluster import Cluster
 from src.models.endorsement import PolicyEndorsement
@@ -306,6 +306,8 @@ async def evidence(
         query = query.where(EvidenceLogEntry.entity_id == entity_id)
         count_query = count_query.where(EvidenceLogEntry.entity_id == entity_id)
     if event_type is not None:
+        if event_type not in VALID_EVENT_TYPES:
+            raise HTTPException(status_code=400, detail="invalid event_type")
         query = query.where(EvidenceLogEntry.event_type == event_type)
         count_query = count_query.where(EvidenceLogEntry.event_type == event_type)
 

@@ -65,16 +65,19 @@ async def lookup_token(
 
 
 async def consume_token(session: AsyncSession, token: str, token_type: str) -> bool:
-    """Mark a token as used. Returns True if found and marked."""
+    """Mark a token as used atomically. Returns True if found and marked."""
     result = await session.execute(
-        select(VerificationToken).where(
+        select(VerificationToken)
+        .where(
             VerificationToken.token == token,
             VerificationToken.token_type == token_type,
             VerificationToken.used.is_(False),
         )
+        .with_for_update()
     )
     vt = result.scalar_one_or_none()
     if vt is None:
         return False
     vt.used = True
+    await session.flush()
     return True

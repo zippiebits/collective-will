@@ -10,6 +10,7 @@ export function setUserEmailCookie(email: string): void {
     `${USER_EMAIL_COOKIE}=${encodeURIComponent(email)}`,
     "Path=/",
     "SameSite=Lax",
+    "Secure",
     `Max-Age=${USER_EMAIL_COOKIE_MAX_AGE_SECONDS}`,
   ].join("; ");
 }

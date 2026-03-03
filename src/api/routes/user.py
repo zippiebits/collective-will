@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.authn import require_user_from_bearer
+from src.api.rate_limit import enforce_dispute_rate_limit
 from src.db.connection import get_db
 from src.handlers.disputes import resolve_submission_dispute
 from src.models.submission import Submission
@@ -55,6 +56,7 @@ async def open_dispute(
     user: Annotated[User, Depends(require_user_from_bearer)],
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
+    enforce_dispute_rate_limit(str(user.id))
     try:
         submission_uuid = UUID(submission_id)
     except ValueError as exc:

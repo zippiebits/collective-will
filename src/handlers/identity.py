@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 from datetime import UTC, datetime
@@ -23,7 +24,7 @@ def create_magic_link_token() -> str:
 
 
 def create_linking_code() -> str:
-    return secrets.token_urlsafe(8)
+    return secrets.token_urlsafe(16)
 
 
 def create_web_session_code() -> str:
@@ -154,7 +155,7 @@ async def exchange_web_session_code(
         await session.commit()
         return False, "expired_code"
 
-    if token_email != email:
+    if not hmac.compare_digest(token_email, email):
         return False, "invalid_code"
 
     user = await get_user_by_email(session, token_email)

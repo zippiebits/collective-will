@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     evolution_api_key: str
     evolution_api_url: str = "http://localhost:8080"
     telegram_bot_token: str | None = None
+    telegram_webhook_secret: str | None = None
     cors_allow_origins: str = "http://localhost:3000"
     telegram_http_timeout_seconds: float = 30.0
     whatsapp_http_timeout_seconds: float = 30.0

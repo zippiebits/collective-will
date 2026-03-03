@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.api.main import app
-from src.api.routes.auth import _get_client_ip
+from src.api.rate_limit import get_request_ip
 from src.db.connection import get_db
 from src.models.user import User
 
@@ -14,28 +14,33 @@ def _mock_session() -> AsyncMock:
     return AsyncMock()
 
 
-class TestGetClientIp:
+class TestGetRequestIp:
+    def test_cf_connecting_ip_preferred(self) -> None:
+        request = MagicMock()
+        request.headers = {"CF-Connecting-IP": "198.51.100.1", "X-Forwarded-For": "203.0.113.50"}
+        assert get_request_ip(request) == "198.51.100.1"
+
     def test_xff_single_ip(self) -> None:
         request = MagicMock()
         request.headers = {"X-Forwarded-For": "203.0.113.50"}
-        assert _get_client_ip(request) == "203.0.113.50"
+        assert get_request_ip(request) == "203.0.113.50"
 
     def test_xff_chain_returns_first(self) -> None:
         request = MagicMock()
         request.headers = {"X-Forwarded-For": "203.0.113.50, 70.41.3.18, 150.172.238.178"}
-        assert _get_client_ip(request) == "203.0.113.50"
+        assert get_request_ip(request) == "203.0.113.50"
 
     def test_no_xff_falls_back_to_client_host(self) -> None:
         request = MagicMock()
         request.headers = {}
         request.client.host = "192.168.1.1"
-        assert _get_client_ip(request) == "192.168.1.1"
+        assert get_request_ip(request) == "192.168.1.1"
 
     def test_no_xff_no_client_returns_empty(self) -> None:
         request = MagicMock()
         request.headers = {}
         request.client = None
-        assert _get_client_ip(request) == ""
+        assert get_request_ip(request) == ""
 
 
 class TestSubscribe:
@@ -61,7 +66,7 @@ class TestSubscribe:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["status"] == "pending_verification"
-                assert data["token"] == "test-token-123"
+                assert "token" not in data
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -196,7 +201,7 @@ class TestVerify:
                 client = TestClient(app)
                 response = client.post("/auth/verify/bad-token")
                 assert response.status_code == 400
-                assert response.json()["detail"] == "invalid_token"
+                assert response.json()["detail"] == "Invalid or expired verification link"
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -212,7 +217,7 @@ class TestVerify:
                 client = TestClient(app)
                 response = client.post("/auth/verify/old-token")
                 assert response.status_code == 400
-                assert response.json()["detail"] == "expired_token"
+                assert response.json()["detail"] == "Invalid or expired verification link"
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -268,6 +273,6 @@ class TestWebSession:
                     json={"email": "user@example.com", "code": "bad"},
                 )
                 assert response.status_code == 400
-                assert response.json()["detail"] == "invalid_code"
+                assert response.json()["detail"] == "Invalid or expired session code"
         finally:
             app.dependency_overrides.pop(get_db, None)
