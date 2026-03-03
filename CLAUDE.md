@@ -110,6 +110,7 @@ The full system flow is documented in `docs/architecture-flow.md`. The short ver
 | `src/handlers/commands.py` | Telegram message router |
 | `src/api/main.py` | FastAPI app entry point |
 | `src/api/routes/` | REST endpoints: analytics, user, auth, webhooks |
+| `src/api/rate_limit.py` | In-process sliding-window rate limiters + `get_request_ip()` (CF-Connecting-IP preferred) |
 | `src/channels/base.py` | `BaseChannel` ABC — platform-agnostic interface |
 | `src/scheduler/main.py` | `run_pipeline()` — full batch pipeline orchestration |
 | `web/lib/api.ts` | Auto-selects `BACKEND_API_BASE_URL` (server) vs `NEXT_PUBLIC_API_BASE_URL` (browser) |
@@ -147,6 +148,11 @@ Business logic uses `UnifiedMessage` / `OutboundMessage` — never platform-spec
 - **Auth tokens must be DB-persisted** — no in-memory token storage (must survive restarts).
 - **No raw `x-user-email` headers for auth** — only backend-verified bearer tokens.
 - **Keep `BaseChannel` boundary** — no platform-specific logic in handlers or pipeline.
+- **Generic auth error messages** — auth failure responses must not distinguish between invalid/expired/not-found to prevent enumeration.
+- **Token consumption must be atomic** — use `SELECT ... FOR UPDATE` + flush in `consume_token()`.
+- **CORS explicit whitelists** — never use `allow_methods=["*"]` or `allow_headers=["*"]`.
+- **Telegram webhook must verify signature** — when `TELEGRAM_WEBHOOK_SECRET` is configured, reject requests without valid `X-Telegram-Bot-Api-Secret-Token`.
+- **IP resolution via `get_request_ip()`** — all rate-limiting code must use `src/api/rate_limit.py:get_request_ip()` (prefers `CF-Connecting-IP`), not raw `X-Forwarded-For`.
 
 ## Code Style
 

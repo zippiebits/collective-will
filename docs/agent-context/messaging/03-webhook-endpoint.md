@@ -37,6 +37,10 @@ Steps:
 
 Check the `apikey` header (or whichever header Evolution API uses for authentication) against the expected key. Return 401 if it doesn't match.
 
+### Telegram webhook signature verification
+
+When `TELEGRAM_WEBHOOK_SECRET` is set in config, the Telegram webhook verifies the `X-Telegram-Bot-Api-Secret-Token` header using `hmac.compare_digest`. The same secret must be passed to Telegram's `setWebhook` API when registering the webhook URL. Without this verification, any party that discovers the webhook URL can forge messages attributed to any Telegram user.
+
 ### Message routing stub
 
 Create a stub function that will be filled in by later tasks:

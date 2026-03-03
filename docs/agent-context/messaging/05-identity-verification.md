@@ -77,7 +77,7 @@ The bot (`route_message` in `src/handlers/commands.py`) surfaces both rejection 
 
 ### Linking code
 
-- Generated after email verification: `secrets.token_urlsafe(8)` (short, easy to type)
+- Generated after email verification: `secrets.token_urlsafe(16)` (128-bit entropy)
 - Stored in `verification_tokens` DB table with 1-hour expiry
 - User receives the code on the `/verify` page after clicking the magic link
 - Website shows the code prominently with a copy button and "Open Telegram Bot" deep link

@@ -21,9 +21,24 @@ IP-based signup rate limits and domain-diversity telemetry are backed by the
 `ip_signup_log` table (not in-memory counters). Each signup records `(requester_ip,
 email_domain, created_at)`. Rate checks query this table with indexed lookups.
 
-The `requester_ip` is extracted server-side by `_get_client_ip()` in
-`src/api/routes/auth.py` from `X-Forwarded-For` (first hop) or `request.client.host`.
+The `requester_ip` is extracted server-side by `get_request_ip()` in
+`src/api/rate_limit.py`, preferring `CF-Connecting-IP` (non-spoofable behind Cloudflare)
+over `X-Forwarded-For` (first hop) or `request.client.host`.
 It is **not** supplied by the client request body.
+
+### Auth endpoint rate limiting (in-process)
+
+In addition to DB-backed abuse controls, auth endpoints have in-process sliding-window
+rate limiters (`src/api/rate_limit.py`) to prevent brute-force attacks on tokens:
+
+| Endpoint | Limit | Window | Key |
+|----------|-------|--------|-----|
+| `/auth/subscribe` | 5 | 60s | IP |
+| `/auth/verify/{token}` | 10 | 60s | IP |
+| `/auth/web-session` | 5 | 60s | IP |
+| `/dashboard/disputes/{id}` | 3 | 3600s | user_id |
+
+For horizontal scaling, replace with Redis-backed counters.
 
 ```sql
 -- ip_signup_log indexes

@@ -11,6 +11,25 @@ If this file conflicts with `CONTEXT-shared.md`, update both in the same change.
 
 ## Priority Workstreams
 
+### P0 — Security Hardening (Completed 2025-03-02)
+
+Full details: `docs/agent-context/security/03-security-hardening-2025-03.md`
+
+- [done] Telegram webhook signature verification (`TELEGRAM_WEBHOOK_SECRET` + `hmac.compare_digest`)
+- [done] Token consumption race condition fix (`SELECT ... FOR UPDATE` + flush)
+- [done] Auth endpoint rate limiting (in-process sliding window: `src/api/rate_limit.py`)
+- [done] Security headers in Caddyfile (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
+- [done] Generic auth error messages (prevent account/token enumeration)
+- [done] CORS tightening (explicit method/header whitelists)
+- [done] IP resolution fix (prefer `CF-Connecting-IP` over `X-Forwarded-For`)
+- [done] Linking code entropy increase (64-bit → 128-bit)
+- [done] Timing side-channel fix (`hmac.compare_digest` for email comparison)
+- [done] Token removed from subscribe API response
+- [done] Evidence endpoint event_type validation against whitelist
+- [done] Dispute rate limiting (3/hour/user)
+- [done] Email cookie `Secure` flag
+- [operator action needed] Set `TELEGRAM_WEBHOOK_SECRET` env var and re-register webhook with Telegram
+
 ### P0 — Staging Debug Sprint (Current)
 
 Design rationale: `docs/decision-rationale/staging-debug-sprint.md`

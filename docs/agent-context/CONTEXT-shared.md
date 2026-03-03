@@ -45,6 +45,13 @@ These are locked. Do not deviate.
 | **Ops observability console** | Add a separate `/ops` diagnostics surface for runtime health/events. In dev/staging it may appear in top navigation; in production it must be admin-auth gated and feature-flagged. Show structured, redacted operational events (health checks, recent errors, job status, webhook/email transport status), not raw container logs. |
 | **Infrastructure** | Njalla domain is registered (WHOIS privacy). Primary hosting is 1984.is VPS. Cloudflare (Free plan) is **active** as the edge proxy — DNS, CDN, DDoS protection, and Bot Fight Mode enabled. Caddy `trusted_proxies static` is configured with all Cloudflare IP ranges + `trusted_proxies_strict` to preserve real client IPs. Production domain serves a static 503 maintenance page until the production stack is deployed (staging is the active environment). Deploy pipeline includes preflight checks, pull retries with backoff, and post-deploy health gates. Origin IP is private. Operator failover playbook + standby VPS must be documented. |
 | **Web dependency security** | Next.js ≥15.5.12, React ≥19.0.1 (patched for CVE-2025-66478). No wget/curl in web runtime image. Deploy SSH timeout 10m — do not lengthen to mask anomalies. Full incident context: `docs/agent-context/security/01-nextjs-rce-cryptomining-2025-03.md`. |
+| **Telegram webhook verification** | When `TELEGRAM_WEBHOOK_SECRET` is set, the Telegram webhook endpoint verifies the `X-Telegram-Bot-Api-Secret-Token` header using `hmac.compare_digest`. The same secret must be passed to Telegram's `setWebhook` API. |
+| **Auth endpoint rate limiting** | In-process sliding-window rate limiters protect auth endpoints: `/auth/subscribe` (5/min/IP), `/auth/verify` (10/min/IP), `/auth/web-session` (5/min/IP). Disputes are limited to 3/hour/user. Implementation: `src/api/rate_limit.py`. For horizontal scaling, replace with Redis-backed counters. |
+| **Generic auth error messages** | Auth failure responses use generic messages ("Invalid or expired verification link", "Invalid or expired session code") to prevent account enumeration. Internal error codes (e.g., `invalid_token`, `expired_token`, `user_not_found`) are not exposed to clients. |
+| **IP resolution** | `get_request_ip()` in `src/api/rate_limit.py` prefers `CF-Connecting-IP` (non-spoofable behind Cloudflare) over `X-Forwarded-For`. All auth routes use this function for IP-based rate limiting. |
+| **CORS policy** | Backend CORS allows only explicit origins (from `CORS_ALLOW_ORIGINS`), methods `GET/POST/OPTIONS`, and headers `Content-Type/Authorization`. No wildcard methods or headers. |
+| **Security headers** | Caddy sets `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on all staging responses. `Server` header is stripped. |
+| **Token consumption atomicity** | `consume_token()` in `src/db/verification_tokens.py` uses `SELECT ... FOR UPDATE` + `flush()` to prevent TOCTOU race conditions on concurrent token redemption. |
 
 ### Abuse Thresholds
 
@@ -56,6 +63,8 @@ These are locked. Do not deviate.
 | Burst quarantine trigger | 3 submissions/5 minutes from one account (soft quarantine: accept + flag for review) |
 | Vote changes per cycle | 1 full vote re-submission per cycle (total max: 2 vote submissions/cycle). |
 | Failed verification attempts | 5 per email per 24h, then 24h lockout |
+| Auth endpoint rate limits | subscribe: 5/min/IP, verify: 10/min/IP, web-session: 5/min/IP (in-process sliding window) |
+| Dispute rate limit | 3 disputes per hour per user |
 
 ### Dispute Handling
 
