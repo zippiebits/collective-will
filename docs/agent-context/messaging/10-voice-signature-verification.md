@@ -94,7 +94,7 @@ Computed properties:
 
 ### Enrollment Flow (`src/voice/enrollment.py`)
 
-1. **Trigger**: `route_message` calls `_start_voice_enrollment` after successful account linking, or when an unenrolled user sends a voice message
+1. **Trigger**: `route_message` calls `_start_voice_enrollment` after successful account linking, or when an unenrolled user sends a voice message, text message, or callback (e.g. Submit) — so the user always receives the first phrase and explanation immediately
 2. **State**: Stored in `user.bot_state_data` as dict: `{enrollment, step, phrase_ids, collected_embeddings, attempt, failures, failed_phrase_ids}`
 3. **Bot state**: `user.bot_state = "enrolling_voice"`
 4. **Per phrase**: User reads phrase → audio downloaded via `BaseChannel.download_file` → sent to voice-service → transcription score checked against locale-specific standard (`voice_transcription_score_standard` for EN, `voice_transcription_score_standard_fa` for FA)
@@ -128,7 +128,7 @@ Computed properties:
 After account lookup, before any action routing:
 
 1. **Voice message** (`voice_file_id is not None`) → route to `_handle_voice_message`
-2. **Not enrolled** → nudge to send voice message (`voice_enroll_needed`)
+2. **Not enrolled** → start enrollment (`_start_voice_enrollment`), which sends `voice_enroll_start` (explanation: why we need voice, process: read N phrases for future verification; then first phrase). If already in `enrolling_voice` and user sends text, resend current phrase (`voice_enroll_intro`).
 3. **Session expired** → start verification (`_start_voice_verification`) or nudge if already awaiting
 4. **Session active** → proceed to normal action routing
 

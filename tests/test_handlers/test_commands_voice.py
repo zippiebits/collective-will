@@ -67,20 +67,35 @@ class TestVoiceGateNotEnrolled:
     """User exists but is not voice-enrolled."""
 
     @pytest.mark.asyncio
-    async def test_text_message_prompts_enrollment(self) -> None:
+    async def test_text_message_starts_enrollment_with_phrase(self) -> None:
+        """Non-enrolled user sending text now starts enrollment and receives first phrase (same as voice)."""
         user = _make_user(enrolled=False)
         session = AsyncMock()
         channel = AsyncMock()
         msg = _make_text_message()
 
-        # Mock user lookup
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = user
         session.execute = AsyncMock(return_value=mock_result)
 
-        result = await route_message(session=session, message=msg, channel=channel)
-        assert result == "voice_enrollment_needed"
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
+            mock_enroll.return_value = {
+                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+                "collected_embeddings": [], "attempt": 0, "failures": 0,
+                "failed_phrase_ids": [],
+            }
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_started"
         channel.send_message.assert_called_once()
+        sent_text = channel.send_message.call_args[0][0].text
+        assert "Phrase 1 of" in sent_text or "read the following phrase" in sent_text.lower()
+        # Placeholder filled with actual phrase from fixture (no raw {phrase} in output)
+        assert "{phrase}" not in sent_text
 
     @pytest.mark.asyncio
     async def test_voice_message_starts_enrollment(self) -> None:

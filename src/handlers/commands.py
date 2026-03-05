@@ -108,8 +108,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_complete": "✅ همه سیاست‌ها بررسی شدند!",
         "cycle_timing": "🗳️ رای‌گیری فعال — {policies} سیاست\n⏰ پایان: {ends_at}\n",
         # Voice enrollment
+        "voice_enroll_start": (
+            "🎤 ثبت صدا برای تأیید هویت\n\n"
+            "برای اینکه بتوانیم هنگام ارسال پیشنهاد یا رای تأیید کنیم که شما هستید، باید صدای شما را ثبت کنیم. "
+            "این کار به امنیت و اصل «یک نفر، یک رای» کمک می‌کند.\n\n"
+            "کار شما: {total} عبارت کوتاه را با صدای بلند بخوانید و هر کدام را به صورت پیام صوتی ارسال کنید. "
+            "ما از اینها پروفایل صوتی شما را می‌سازیم تا بعداً هویت شما را تأیید کنیم.\n\n"
+            "عبارت {step} از {total}:\n«{phrase}»"
+        ),
         "voice_enroll_intro": (
-            "🎤 برای تأیید هویت صوتی، لطفاً عبارت زیر را با صدای بلند بخوانید و ضبط صوتی ارسال کنید:\n\n"
+            "🎤 لطفاً عبارت زیر را با صدای بلند بخوانید و ضبط صوتی ارسال کنید:\n\n"
             "«{phrase}»\n\n"
             "(عبارت {step} از {total})"
         ),
@@ -169,8 +177,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_complete": "✅ All policies reviewed!",
         "cycle_timing": "🗳️ Active vote — {policies} policies\n⏰ Ends: {ends_at}\n",
         # Voice enrollment
+        "voice_enroll_start": (
+            "🎤 Voice registration for identity verification\n\n"
+            "We need to register your voice so we can verify it's you when you submit proposals or vote. "
+            "This keeps the process secure and ensures one person, one voice.\n\n"
+            "What you'll do: You'll read {total} short phrases aloud and send each as a voice message. "
+            "We use these to create your voice profile for future verification.\n\n"
+            "Phrase {step} of {total}:\n\"{phrase}\""
+        ),
         "voice_enroll_intro": (
-            "🎤 For voice identity verification, please read the following phrase aloud and send a voice message:\n\n"
+            "🎤 Please read the following phrase aloud and send a voice message:\n\n"
             "\"{phrase}\"\n\n"
             "(Phrase {step} of {total})"
         ),
@@ -1019,13 +1035,14 @@ async def _start_voice_enrollment(
     user.bot_state_data = state
     await db.commit()
 
+    total = settings.voice_enrollment_phrases_per_session
     await channel.send_message(OutboundMessage(
         recipient_ref=message.sender_ref,
         text=_msg(
-            user.locale, "voice_enroll_intro",
+            user.locale, "voice_enroll_start",
             phrase=phrase_text,
             step=1,
-            total=settings.voice_enrollment_phrases_per_session,
+            total=total,
         ),
     ))
     return "voice_enrollment_started"
@@ -1286,11 +1303,7 @@ async def route_message(
 
         # Voice gate for callbacks (same as for text): require enrollment then active session
         if not user.is_voice_enrolled:
-            await channel.send_message(OutboundMessage(
-                recipient_ref=message.sender_ref,
-                text=_msg(user.locale, "voice_enroll_needed"),
-            ))
-            return "voice_enrollment_needed"
+            return await _start_voice_enrollment(user, message, channel, session)
         if not user.is_voice_session_active:
             # Allow cancel/main to exit verification and show menu (e.g. to change language)
             if message.callback_data in {"cancel", "main"}:
@@ -1349,18 +1362,22 @@ async def route_message(
     if message.voice_file_id is not None:
         return await _handle_voice_message(user, message, channel, session)
 
-    # 2. Not enrolled → prompt for voice enrollment
+    # 2. Not enrolled → start voice enrollment (send first phrase so user knows what to read)
     if not user.is_voice_enrolled:
         if user.bot_state != "enrolling_voice":
-            await channel.send_message(OutboundMessage(
-                recipient_ref=message.sender_ref,
-                text=_msg(user.locale, "voice_enroll_needed"),
-            ))
-            return "voice_enrollment_needed"
-        # Text during enrollment — nudge to send voice
+            return await _start_voice_enrollment(user, message, channel, session)
+        # Text during enrollment — resend current phrase so they know what to read
+        state = user.bot_state_data or {}
+        _, phrase_text = get_current_phrase(state, user.locale)
+        settings = get_settings()
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,
-            text=_msg(user.locale, "voice_enroll_needed"),
+            text=_msg(
+                user.locale, "voice_enroll_intro",
+                phrase=phrase_text,
+                step=state.get("step", 0) + 1,
+                total=settings.voice_enrollment_phrases_per_session,
+            ),
         ))
         return "voice_enrollment_nudge"
 
