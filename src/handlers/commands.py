@@ -1143,6 +1143,7 @@ async def _start_voice_verification(
     await channel.send_message(OutboundMessage(
         recipient_ref=message.sender_ref,
         text=_msg(user.locale, "voice_verify_prompt", phrase=phrase_text),
+        reply_markup=_cancel_keyboard(user.locale),
     ))
     return "voice_verification_prompted"
 
@@ -1291,6 +1292,9 @@ async def route_message(
             ))
             return "voice_enrollment_needed"
         if not user.is_voice_session_active:
+            # Allow cancel/main to exit verification and show menu (e.g. to change language)
+            if message.callback_data in {"cancel", "main"}:
+                return await _handle_cancel(user, message, channel, session)
             return await _start_voice_verification(user, message, channel, session)
 
         return await _route_callback(user, message, channel, session)
@@ -1363,7 +1367,11 @@ async def route_message(
     # 3. Enrolled but session expired → prompt for verification
     if not user.is_voice_session_active:
         if user.bot_state == "awaiting_voice":
-            # Text during verification — nudge
+            # Allow text "cancel" / "انصراف" etc. to exit verification and show menu (e.g. change language)
+            text_lower = (message.text or "").strip().lower()
+            if text_lower in ("cancel", "main", "menu", "انصراف"):
+                return await _handle_cancel(user, message, channel, session)
+            # Otherwise nudge to send voice
             await channel.send_message(OutboundMessage(
                 recipient_ref=message.sender_ref,
                 text=_msg(user.locale, "voice_verify_nudge"),
