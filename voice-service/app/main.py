@@ -1,4 +1,4 @@
-"""Voice inference service — SpeechBrain embedding + WhisperX transcription."""
+"""Voice inference service — SpeechBrain embedding + faster-whisper transcription."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def health() -> HealthResponse:
 @app.post("/process", response_model=ProcessResponse)
 def process(req: ProcessRequest) -> ProcessResponse:
     """Sync handler — FastAPI runs it in a thread pool automatically,
-    preventing CPU-bound SpeechBrain/WhisperX inference from blocking
+    preventing CPU-bound SpeechBrain/faster-whisper inference from blocking
     the event loop (and starving /health checks)."""
     if not _models_ready:
         raise HTTPException(status_code=503, detail="Models not ready")

@@ -118,7 +118,7 @@ The full system flow is documented in `docs/architecture-flow.md`. The short ver
 | `src/voice/verification.py` | Session verification: dual check (embedding + transcription) |
 | `src/voice/phrases.py` | Phrase pool loaded from `voice-phrases.json` (gitignored secret), random selection |
 | `src/voice/client.py` | HTTP client for voice-service (base64 encode, retry) |
-| `voice-service/` | Separate FastAPI service: SpeechBrain ECAPA-TDNN + WhisperX inference |
+| `voice-service/` | Separate FastAPI service: SpeechBrain ECAPA-TDNN + faster-whisper inference |
 | `src/scheduler/main.py` | `run_pipeline()` — full batch pipeline orchestration |
 | `web/lib/api.ts` | Auto-selects `BACKEND_API_BASE_URL` (server) vs `NEXT_PUBLIC_API_BASE_URL` (browser) |
 | `web/app/` | Next.js App Router pages |

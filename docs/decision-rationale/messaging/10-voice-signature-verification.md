@@ -36,24 +36,24 @@ Voice verification implements the identity assurance layer referenced in shared 
 
 ---
 
-## Decision: SpeechBrain ECAPA-TDNN + WhisperX, self-hosted CPU inference
+## Decision: SpeechBrain ECAPA-TDNN + faster-whisper, self-hosted CPU inference
 
 **Why this is correct**
 
 - Biometric data must not leave the deployment boundary — rules out cloud speech APIs
 - ECAPA-TDNN produces compact 192-dim embeddings with strong speaker discrimination on VoxCeleb benchmarks
-- WhisperX provides word-level timestamps and accurate multilingual transcription (Farsi + English)
+- faster-whisper provides accurate multilingual transcription (Farsi + English) with a lighter dependency footprint than WhisperX (no pyannote-audio/torchcodec)
 - CPU inference is sufficient for per-user interactive verification (1-3s latency acceptable for voice note UX)
 - Separate container isolates heavy ML dependencies from the main backend
 
 **Risk**
 
 - Model updates (SpeechBrain version, ECAPA weights) can change embedding space, invalidating enrolled embeddings
-- WhisperX internal API may change between versions
+- faster-whisper API may change between versions
 
 **Guardrail**
 
-- `voice-service/requirements.txt` pins exact versions (torch, speechbrain, whisperx)
+- `voice-service/requirements.txt` pins exact versions (torch, speechbrain, faster-whisper)
 - `voice_model_version` stored on each user record for compatibility tracking
 - Re-enrollment mechanism planned for post-MVP model migration
 - SpeechBrain model pre-downloaded at Docker build time to avoid cold-start delays

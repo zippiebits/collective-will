@@ -11,7 +11,7 @@ from pydub import AudioSegment
 def convert_to_wav16k(audio_bytes: bytes) -> bytes:
     """Convert arbitrary audio bytes (OGG Opus, etc.) to 16kHz mono WAV.
 
-    Returns raw WAV bytes suitable for SpeechBrain / WhisperX.
+    Returns raw WAV bytes suitable for SpeechBrain / faster-whisper.
     """
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=True) as tmp:
         tmp.write(audio_bytes)

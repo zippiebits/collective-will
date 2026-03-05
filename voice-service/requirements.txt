@@ -5,7 +5,9 @@ torch==2.8.0
 torchaudio==2.8.0
 soundfile>=0.12.1
 speechbrain==1.0.3
-whisperx==3.8.1
+huggingface_hub<0.24
+requests>=2.31.0
+faster-whisper>=1.1.1
 pydub==0.25.1
 fastapi==0.115.6
 uvicorn[standard]==0.32.1

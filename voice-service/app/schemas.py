@@ -10,7 +10,7 @@ class ProcessRequest(BaseModel):
     expected_phrase: str = Field(..., description="Expected transcription text for scoring")
     language: Optional[str] = Field(
         default=None,
-        description="Language code for transcription (e.g. 'en', 'fa'). If omitted, WhisperX auto-detects.",
+        description="Language code for transcription (e.g. 'en', 'fa'). If omitted, faster-whisper auto-detects.",
     )
 
 

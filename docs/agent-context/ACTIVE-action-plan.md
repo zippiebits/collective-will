@@ -845,14 +845,14 @@ Design rationale: `docs/agent-context/messaging/10-voice-signature-verification-
 
 Goal: Add voice-based identity verification after email + Telegram linking. Users enroll
 once (3 phrases from pool of 100/language) and verify at each session start (1 phrase).
-Dual verification: SpeechBrain ECAPA-TDNN embedding similarity + WhisperX transcription match.
+Dual verification: SpeechBrain ECAPA-TDNN embedding similarity + faster-whisper transcription match.
 ML inference runs in a separate Docker service (`voice-service/`).
 
 **Phase 1 — Voice Inference Service**
 
-103. [done] Create `voice-service/` (separate FastAPI + SpeechBrain + WhisperX)
+103. [done] Create `voice-service/` (separate FastAPI + SpeechBrain + faster-whisper)
      - `Dockerfile`, `requirements.txt`, `app/main.py` (POST /process, GET /health)
-     - `app/audio.py` (OGG Opus → 16kHz WAV), `app/embed.py` (ECAPA-TDNN 192-dim), `app/transcribe.py` (WhisperX + word-overlap)
+     - `app/audio.py` (OGG Opus → 16kHz WAV), `app/embed.py` (ECAPA-TDNN 192-dim), `app/transcribe.py` (faster-whisper + word-overlap)
      - `app/schemas.py` (Pydantic request/response models)
      - Added to `docker-compose.yml` and `deploy/docker-compose.prod.yml` with healthcheck
 

@@ -10,7 +10,7 @@
 
 ## Goal
 
-Verify user identity via voice biometrics before allowing high-trust actions (submit, vote, endorse). Users read randomized phrases aloud; the system compares speaker embeddings (SpeechBrain ECAPA-TDNN) and transcription accuracy (WhisperX) against stored enrollment data. This dual-verification approach prevents both replay attacks and voice impersonation while remaining accessible over standard messaging voice notes.
+Verify user identity via voice biometrics before allowing high-trust actions (submit, vote, endorse). Users read randomized phrases aloud; the system compares speaker embeddings (SpeechBrain ECAPA-TDNN) and transcription accuracy (faster-whisper) against stored enrollment data. This dual-verification approach prevents both replay attacks and voice impersonation while remaining accessible over standard messaging voice notes.
 
 ## Files
 
@@ -27,12 +27,12 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 ### Voice inference service (separate container)
 
 - `voice-service/Dockerfile` — `python:3.11-slim` base, CPU-only PyTorch, ffmpeg, pre-downloads SpeechBrain model at build time
-- `voice-service/requirements.txt` — Pinned dependencies (torch, speechbrain, whisperx, pydub, fastapi, uvicorn, pydantic, numpy)
+- `voice-service/requirements.txt` — Pinned dependencies (torch, speechbrain, faster-whisper, pydub, fastapi, uvicorn, pydantic, numpy)
 - `voice-service/app/__init__.py` — package marker
 - `voice-service/app/main.py` — FastAPI app: `/health` (GET) and `/process` (POST), sync handlers (thread-pool for CPU inference)
 - `voice-service/app/schemas.py` — `ProcessRequest` (audio_b64, expected_phrase, optional language), `ProcessResponse` (transcription, transcription_score, embedding, model_version), `HealthResponse`
 - `voice-service/app/embed.py` — SpeechBrain ECAPA-TDNN: `load_model`, `extract_embedding` → 192-dim float32 vector
-- `voice-service/app/transcribe.py` — WhisperX: `load_model` (model `small`), `transcribe_audio` (optional `language`), `word_overlap_score` (EN), `_farsi_phrase_score` (FA: subsequence + homophones) → (text, score)
+- `voice-service/app/transcribe.py` — faster-whisper: `load_model` (model `small`), `transcribe_audio` (optional `language`), `word_overlap_score` (EN), `_farsi_phrase_score` (FA: subsequence + homophones) → (text, score)
 - `voice-service/app/audio.py` — `convert_to_wav16k`: pydub OGG Opus → 16kHz mono WAV
 
 ### Modified files
@@ -136,17 +136,17 @@ Session extension: `voice_verified_at` updated on successful vote and endorsemen
 
 ### Voice Inference Service (`voice-service/`)
 
-Separate FastAPI container running SpeechBrain ECAPA-TDNN and WhisperX on CPU.
+Separate FastAPI container running SpeechBrain ECAPA-TDNN and faster-whisper on CPU.
 
 - **Endpoints**: `GET /health` (model readiness), `POST /process` (embedding + transcription)
-- **Input**: `ProcessRequest` with `audio_b64` (base64-encoded audio), `expected_phrase`, and optional `language` (e.g. `"en"`, `"fa"`) for WhisperX; when set, improves transcription accuracy for short clips (backend passes user locale)
+- **Input**: `ProcessRequest` with `audio_b64` (base64-encoded audio), `expected_phrase`, and optional `language` (e.g. `"en"`, `"fa"`) for faster-whisper; when set, improves transcription accuracy for short clips (backend passes user locale)
 - **Output**: `ProcessResponse` with `transcription`, `transcription_score` (language-dependent, see below), `embedding` (192 floats), `model_version`
 - **Audio pipeline**: Base64 decode → pydub convert to 16kHz mono WAV → embedding extraction + transcription (with optional language hint)
 - **Transcription scoring**:
   - **English (default)**: `word_overlap_score` — fraction of expected words that appear exactly in the transcription (set overlap).
   - **Farsi (`language == "fa"`)**: `_farsi_phrase_score` — per-word similarity then average. For each expected word, best match over transcribed words is computed using: (1) **subsequence match**: expected letters must appear in the transcribed word in the same order; extra letters in the transcription are allowed (e.g. لطفا vs لوتفن). (2) **Homophone equivalence**: the following Persian letters are treated as the same sound when comparing: ت/ط, س/ص/ث, ز/ظ/ض/ذ, ق/غ, ح/ه (sources: LELB Society, Wikipedia Persian phonology). Score per word = (matched length in order) / (expected word length), in [0, 1].
 - **Threading**: Sync route handlers — FastAPI auto-runs in thread pool to avoid blocking the event loop
-- **Docker**: `python:3.11-slim`, CPU-only PyTorch via `--index-url https://download.pytorch.org/whl/cpu`, SpeechBrain model pre-downloaded at build time, `voice-models` volume for caching. WhisperX model: `small` (better Farsi/EN accuracy than `base`).
+- **Docker**: `python:3.11-slim`, CPU-only PyTorch via `--index-url https://download.pytorch.org/whl/cpu`, SpeechBrain model pre-downloaded at build time, `voice-models` volume for caching. faster-whisper model: `small` (better Farsi/EN accuracy than `base`).
 - **Health check**: `interval=30s, start_period=120s` (model loading takes ~60-90s)
 
 ### Evidence Logging

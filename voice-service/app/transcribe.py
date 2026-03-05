@@ -1,4 +1,4 @@
-"""WhisperX transcription with word-overlap scoring."""
+"""faster-whisper transcription with word-overlap scoring."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import re
 import tempfile
 from typing import Any, Optional
 
-import whisperx
+from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +33,16 @@ _FARSI_PHONETIC_MAP: dict[str, str] = {
 
 
 def load_model() -> Any:
-    """Load (or return cached) WhisperX model."""
+    """Load (or return cached) faster-whisper model."""
     global _model
     if _model is None:
-        logger.info("Loading WhisperX model")
-        _model = whisperx.load_model(
+        logger.info("Loading faster-whisper model")
+        _model = WhisperModel(
             "small",
             device="cpu",
             compute_type="int8",
         )
-        logger.info("WhisperX model loaded")
+        logger.info("faster-whisper model loaded")
     return _model
 
 
@@ -140,22 +140,22 @@ def transcribe_audio(
 ) -> tuple[str, float]:
     """Transcribe audio and score against expected phrase.
 
-    If language is set (e.g. 'en', 'fa'), WhisperX uses it for transcription;
+    If language is set (e.g. 'en', 'fa'), faster-whisper uses it for transcription;
     otherwise it auto-detects. Passing language improves accuracy for short clips.
     Returns (transcription_text, overlap_score).
     """
     model = load_model()
 
+    if language is not None:
+        language = language.strip().lower() or None
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
         tmp.write(wav_bytes)
         tmp.flush()
-        audio = whisperx.load_audio(tmp.name)
+        segments, _info = model.transcribe(tmp.name, language=language, beam_size=5, vad_filter=True)
+        segments = list(segments)
 
-    if language is not None:
-        language = language.strip().lower() or None
-    result = model.transcribe(audio, language=language)
-    segments = result.get("segments", [])
-    raw = " ".join(seg.get("text", "") for seg in segments).strip()
+    raw = " ".join(s.text for s in segments).strip()
     transcription = _strip_punctuation(raw)
 
     if language == "fa":
