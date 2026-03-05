@@ -98,14 +98,20 @@ async def process_enrollment_audio(
     client = VoiceServiceClient()
     try:
         phrase_id, phrase_text = get_current_phrase(state, locale)
-        result = await client.process_audio(audio_bytes, phrase_text)
+        result = await client.process_audio(audio_bytes, phrase_text, language=locale)
     except Exception:
         logger.exception("Voice service error during enrollment")
         return "service_error", state
 
     # During enrollment, we only check transcription match (no stored embedding yet)
-    # Accept if transcription score meets standard threshold
-    if result.transcription_score >= settings.voice_transcription_score_standard:
+    # Accept if transcription score meets locale-specific standard threshold
+    locale_lower = (locale or "en").strip().lower()
+    trans_standard = (
+        settings.voice_transcription_score_standard_fa
+        if locale_lower == "fa"
+        else settings.voice_transcription_score_standard
+    )
+    if result.transcription_score >= trans_standard:
         # Phrase accepted — store embedding
         emb_b64 = base64.b64encode(
             bytes(struct.pack(f"<{len(result.embedding)}f", *result.embedding))

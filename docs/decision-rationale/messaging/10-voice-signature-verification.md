@@ -28,7 +28,7 @@ Voice verification implements the identity assurance layer referenced in shared 
 
 **Guardrail**
 
-- All thresholds are config-backed (`voice_embedding_similarity_high`, `voice_embedding_similarity_moderate`, `voice_transcription_score_standard`, `voice_transcription_score_strict`) — tunable without code changes
+- All thresholds are config-backed (embedding: per language-pair high + delta for moderate; transcription: EN/FA standard and strict) — tunable without code changes
 - Evidence logs record both scores for every verification attempt, enabling threshold analysis
 - Failed phrases are replaced (not repeated) to reduce frustration from phrase-specific pronunciation difficulty
 
@@ -174,23 +174,30 @@ Voice verification implements the identity assurance layer referenced in shared 
 
 ---
 
-## Decision: Phrase pool (100 per language, `secrets` for selection)
+## Decision: Externalized phrase pool (dynamic size, `secrets` for selection)
 
 **Why this is correct**
 
-- Large pool makes phrase prediction difficult for replay attacks
-- 5-8 word phrases are long enough for reliable transcription scoring but short enough for comfortable reading
+- Large pools (200 EN, 200 FA purpose-written phrases) make phrase prediction difficult for replay attacks
+- EN phrases use A1-B1 vocabulary only — designed for Farsi-speaking ESL users with clear, predictable pronunciation
+- FA phrases use everyday conversational vocabulary — no literary, religious, or archaic language
+- All phrases are 5-8 words, giving reliable transcription scoring while being comfortable to read
 - `secrets.randbelow` ensures cryptographic randomness in phrase selection
 - Excluded phrase tracking prevents repeating failed phrases during enrollment
+- Phrases stored in `voice-phrases.json` (gitignored, deployed as secret) — not committed to the repo
 
 **Risk**
 
-- Static phrase pools could be memorized over time if not refreshed
+- Phrase pools could be memorized over time if not refreshed
+- Missing or corrupted phrases file prevents voice features from working
 
 **Guardrail**
 
-- Phrase pools are in-code constants — easy to expand without schema changes
+- `voice-phrases.json` deployed to VPS via `push-env.sh` alongside `.env.secrets`
+- `voice-phrases.json.example` provides format reference
+- `_load_phrases` validates structure (both locales, min 3 phrases, no empty strings) at startup
 - `select_phrases` accepts `exclude_ids` to avoid repetition within a session
+- Pool sizes are dynamic — code adapts to however many phrases the file contains
 - Post-MVP: dynamic phrase generation could supplement the static pool
 
 **Verdict**: **Keep with guardrail**

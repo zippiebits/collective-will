@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 
 import torch
 import torchaudio
@@ -13,16 +14,18 @@ logger = logging.getLogger(__name__)
 
 _model: EncoderClassifier | None = None
 MODEL_VERSION = "speechbrain/spkrec-ecapa-voxceleb"
+_DEFAULT_SAVEDIR = "/app/models/ecapa"
 
 
 def load_model() -> EncoderClassifier:
     """Load (or return cached) ECAPA-TDNN model."""
     global _model
     if _model is None:
-        logger.info("Loading ECAPA-TDNN model: %s", MODEL_VERSION)
+        savedir = os.environ.get("ECAPA_MODEL_DIR", _DEFAULT_SAVEDIR)
+        logger.info("Loading ECAPA-TDNN model: %s (savedir=%s)", MODEL_VERSION, savedir)
         _model = EncoderClassifier.from_hparams(
             source=MODEL_VERSION,
-            savedir="/app/models/ecapa",
+            savedir=savedir,
             run_opts={"device": "cpu"},
         )
         logger.info("ECAPA-TDNN model loaded")
@@ -33,7 +36,8 @@ def extract_embedding(wav_bytes: bytes) -> list[float]:
     """Extract 192-dim speaker embedding from 16kHz mono WAV bytes."""
     model = load_model()
 
-    waveform, sample_rate = torchaudio.load(io.BytesIO(wav_bytes))
+    waveform, sample_rate = torchaudio.load(io.BytesIO(wav_bytes), format="wav")
+
     if sample_rate != 16000:
         resampler = torchaudio.transforms.Resample(sample_rate, 16000)
         waveform = resampler(waveform)

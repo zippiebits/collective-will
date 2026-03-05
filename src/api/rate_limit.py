@@ -84,10 +84,23 @@ def enforce_dispute_rate_limit(user_id: str) -> None:
         raise HTTPException(status_code=429, detail="rate_limit_exceeded")
 
 
-# Voice verification rate limiter (per user_id)
-_voice_verify_limiter = _SlidingWindowCounter(max_requests=5, window_seconds=3600)
+# Voice verification rate limiter (per user_id) — lazy-init from config
+_voice_verify_limiter: _SlidingWindowCounter | None = None
+
+
+def _get_voice_limiter() -> _SlidingWindowCounter:
+    global _voice_verify_limiter
+    if _voice_verify_limiter is None:
+        from src.config import get_settings
+
+        settings = get_settings()
+        _voice_verify_limiter = _SlidingWindowCounter(
+            max_requests=settings.voice_verification_rate_limit_count,
+            window_seconds=settings.voice_verification_rate_limit_window_seconds,
+        )
+    return _voice_verify_limiter
 
 
 def check_voice_rate_limit(user_id: str) -> bool:
     """Return True if voice verification attempt is allowed, False if rate-limited."""
-    return _voice_verify_limiter.check(user_id)
+    return _get_voice_limiter().check(user_id)

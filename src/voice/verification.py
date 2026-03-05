@@ -60,7 +60,9 @@ async def verify_voice(
     client = VoiceServiceClient()
     phrase_text = get_phrase(user.locale, phrase_id)
     try:
-        result = await client.process_audio(audio_bytes, phrase_text)
+        result = await client.process_audio(
+            audio_bytes, phrase_text, language=user.locale
+        )
     except Exception:
         logger.exception("Voice service error during verification")
         return "service_error"
@@ -69,13 +71,25 @@ async def verify_voice(
     stored_embedding = deserialize_embedding(user.voice_embedding)
     sim = cosine_similarity(result.embedding, stored_embedding)
 
+    # Use locale-specific thresholds (verification is same-locale: EN-EN or FA-FA)
+    locale = (user.locale or "en").strip().lower()
+    if locale == "fa":
+        trans_standard = settings.voice_transcription_score_standard_fa
+        trans_strict = settings.voice_transcription_score_strict_fa
+        sim_high = settings.voice_embedding_similarity_high_fa_fa
+    else:
+        trans_standard = settings.voice_transcription_score_standard
+        trans_strict = settings.voice_transcription_score_strict
+        sim_high = settings.voice_embedding_similarity_high_en_en
+    sim_moderate = sim_high - settings.voice_embedding_similarity_delta
+
     decision = voice_decision(
         embedding_similarity=sim,
         transcription_score=result.transcription_score,
-        sim_high=settings.voice_embedding_similarity_high,
-        sim_moderate=settings.voice_embedding_similarity_moderate,
-        trans_standard=settings.voice_transcription_score_standard,
-        trans_strict=settings.voice_transcription_score_strict,
+        sim_high=sim_high,
+        sim_moderate=sim_moderate,
+        trans_standard=trans_standard,
+        trans_strict=trans_strict,
     )
 
     # Log evidence (no biometric data — only scores and phrase_id)
@@ -89,6 +103,8 @@ async def verify_voice(
             "embedding_similarity": round(sim, 4),
             "transcription_score": round(result.transcription_score, 4),
             "phrase_id": phrase_id,
+            "trans_standard": trans_standard,
+            "trans_strict": trans_strict,
         },
     )
 

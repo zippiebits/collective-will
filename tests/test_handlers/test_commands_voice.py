@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -148,3 +148,73 @@ class TestVoiceRateLimiting:
             result = await route_message(session=session, message=msg, channel=channel)
 
         assert result == "voice_rate_limited"
+
+
+class TestEnrollmentCooldown:
+    """After enrollment_blocked, user must wait 24 hours before re-enrolling."""
+
+    @pytest.mark.asyncio
+    async def test_cooldown_blocks_re_enrollment(self) -> None:
+        """Voice message within 24h of block should be rejected."""
+        blocked_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        user = _make_user(
+            enrolled=False,
+            bot_state_data={"enrollment_blocked_at": blocked_at},
+        )
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_voice_message()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await route_message(session=session, message=msg, channel=channel)
+        assert result == "voice_enrollment_cooldown"
+
+    @pytest.mark.asyncio
+    async def test_cooldown_expires_after_24h(self) -> None:
+        """Voice message after 24h cooldown should start enrollment."""
+        blocked_at = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        user = _make_user(
+            enrolled=False,
+            bot_state_data={"enrollment_blocked_at": blocked_at},
+        )
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_voice_message()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        with patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll:
+            mock_enroll.return_value = {
+                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+                "collected_embeddings": [], "attempt": 0, "failures": 0,
+                "failed_phrase_ids": [],
+            }
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_started"
+
+
+class TestVoiceRateLimiterConfig:
+    """Voice rate limiter should read values from config, not hardcode."""
+
+    def test_limiter_uses_config_values(self) -> None:
+        import src.api.rate_limit as rl_mod
+
+        # Reset the cached limiter
+        rl_mod._voice_verify_limiter = None
+
+        with patch("src.config.get_settings") as mock_settings:
+            mock_settings.return_value.voice_verification_rate_limit_count = 2
+            mock_settings.return_value.voice_verification_rate_limit_window_seconds = 60
+
+            limiter = rl_mod._get_voice_limiter()
+            assert limiter.max_requests == 2
+            assert limiter.window_seconds == 60
+
+        # Clean up
+        rl_mod._voice_verify_limiter = None

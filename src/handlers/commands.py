@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -999,6 +999,19 @@ async def _start_voice_enrollment(
 ) -> str:
     """Initialize voice enrollment and send first phrase prompt."""
     settings = get_settings()
+
+    # Enforce 24-hour cooldown after enrollment block
+    blocked_at_str = (user.bot_state_data or {}).get("enrollment_blocked_at")
+    if blocked_at_str:
+        blocked_at = datetime.fromisoformat(blocked_at_str)
+        if datetime.now(UTC) - blocked_at < timedelta(hours=24):
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_enroll_blocked"),
+            ))
+            return "voice_enrollment_cooldown"
+        user.bot_state_data = None
+
     state = await start_enrollment(user)
     _, phrase_text = get_current_phrase(state, user.locale)
 
@@ -1093,7 +1106,7 @@ async def _handle_enrollment_voice(
 
     if status == "enrollment_blocked":
         user.bot_state = None
-        user.bot_state_data = None
+        user.bot_state_data = {"enrollment_blocked_at": datetime.now(UTC).isoformat()}
         await db.commit()
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,

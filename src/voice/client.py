@@ -31,14 +31,24 @@ class VoiceServiceClient:
         self._max_retries = settings.voice_http_max_retries
 
     async def process_audio(
-        self, audio_bytes: bytes, expected_phrase: str
+        self,
+        audio_bytes: bytes,
+        expected_phrase: str,
+        language: str | None = None,
     ) -> VoiceProcessResult:
         """Send audio to the voice service for embedding + transcription.
 
+        language: Optional Whisper language code (e.g. 'en', 'fa'). Improves
+            transcription accuracy for short clips when set.
         Raises httpx.HTTPError on failure after retries.
         """
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-        payload = {"audio_b64": audio_b64, "expected_phrase": expected_phrase}
+        payload: dict[str, str] = {
+            "audio_b64": audio_b64,
+            "expected_phrase": expected_phrase,
+        }
+        if language and language.strip():
+            payload["language"] = language.strip().lower()
 
         last_exc: Exception | None = None
         for attempt in range(1, self._max_retries + 1):

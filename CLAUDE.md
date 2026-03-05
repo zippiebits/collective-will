@@ -116,7 +116,7 @@ The full system flow is documented in `docs/architecture-flow.md`. The short ver
 | `src/voice/scoring.py` | Cosine similarity, decision matrix, embedding serialize/deserialize |
 | `src/voice/enrollment.py` | Multi-step enrollment state machine (3 phrases → averaged embedding) |
 | `src/voice/verification.py` | Session verification: dual check (embedding + transcription) |
-| `src/voice/phrases.py` | 100 phrases per language (EN/FA), random selection |
+| `src/voice/phrases.py` | Phrase pool loaded from `voice-phrases.json` (gitignored secret), random selection |
 | `src/voice/client.py` | HTTP client for voice-service (base64 encode, retry) |
 | `voice-service/` | Separate FastAPI service: SpeechBrain ECAPA-TDNN + WhisperX inference |
 | `src/scheduler/main.py` | `run_pipeline()` — full batch pipeline orchestration |

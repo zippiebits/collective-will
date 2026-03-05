@@ -1,12 +1,14 @@
 --index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://pypi.org/simple/
 
-torch==2.5.1
-torchaudio==2.5.1
+torch==2.8.0
+torchaudio==2.8.0
+soundfile>=0.12.1
 speechbrain==1.0.3
 whisperx==3.8.1
 pydub==0.25.1
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
-numpy==1.26.4
+numpy>=2.1.0
 pydantic==2.10.3
+pytest>=8.0.0

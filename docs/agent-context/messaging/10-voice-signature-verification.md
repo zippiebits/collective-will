@@ -19,7 +19,7 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 - `src/voice/__init__.py` — package marker
 - `src/voice/client.py` — `VoiceServiceClient`: async HTTP client for voice-service `/process`
 - `src/voice/audio.py` — `download_and_validate_audio`, `AudioValidationError`: duration checks + channel download
-- `src/voice/phrases.py` — 100 phrases per language (FA/EN), `select_phrases`, `get_phrase` (uses `secrets` for selection)
+- `src/voice/phrases.py` — Loads phrase pools from external JSON file (`voice-phrases.json`), `select_phrases`, `get_phrase`, `pool_size` (uses `secrets` for selection)
 - `src/voice/scoring.py` — `cosine_similarity`, `voice_decision` (decision matrix), `serialize_embedding`, `deserialize_embedding`, `average_embeddings`
 - `src/voice/enrollment.py` — Multi-step enrollment state machine: `init_enrollment_state`, `start_enrollment`, `get_current_phrase`, `process_enrollment_audio`, `finalize_enrollment`
 - `src/voice/verification.py` — Session verification: `pick_verification_phrase`, `verify_voice`
@@ -30,9 +30,9 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 - `voice-service/requirements.txt` — Pinned dependencies (torch, speechbrain, whisperx, pydub, fastapi, uvicorn, pydantic, numpy)
 - `voice-service/app/__init__.py` — package marker
 - `voice-service/app/main.py` — FastAPI app: `/health` (GET) and `/process` (POST), sync handlers (thread-pool for CPU inference)
-- `voice-service/app/schemas.py` — `ProcessRequest` (audio_b64, expected_phrase), `ProcessResponse` (transcription, transcription_score, embedding, model_version), `HealthResponse`
+- `voice-service/app/schemas.py` — `ProcessRequest` (audio_b64, expected_phrase, optional language), `ProcessResponse` (transcription, transcription_score, embedding, model_version), `HealthResponse`
 - `voice-service/app/embed.py` — SpeechBrain ECAPA-TDNN: `load_model`, `extract_embedding` → 192-dim float32 vector
-- `voice-service/app/transcribe.py` — WhisperX: `load_model`, `transcribe_audio`, `word_overlap_score` → (text, score)
+- `voice-service/app/transcribe.py` — WhisperX: `load_model` (model `small`), `transcribe_audio` (optional `language`), `word_overlap_score` (EN), `_farsi_phrase_score` (FA: subsequence + homophones) → (text, score)
 - `voice-service/app/audio.py` — `convert_to_wav16k`: pydub OGG Opus → 16kHz mono WAV
 
 ### Modified files
@@ -44,11 +44,11 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 - `src/channels/telegram.py` — Implemented `download_file`, voice message parsing in `parse_webhook`
 - `src/channels/whatsapp.py` — `download_file` raises `NotImplementedError` (post-MVP)
 - `src/db/evidence.py` — Added `voice_enrolled`, `voice_verified` to `VALID_EVENT_TYPES`
-- `src/config.py` — Added all `voice_*` settings
-- `src/api/rate_limit.py` — Added `check_voice_rate_limit` (sliding-window, 5/hour per user)
+- `src/config.py` — Added all `voice_*` settings (including `voice_phrases_file`)
+- `src/api/rate_limit.py` — Added `check_voice_rate_limit` (sliding-window, config-backed limits)
 - `migrations/versions/004_voice_verification.py` — Adds voice columns to `users` table
 - `docker-compose.yml` — Added `voice-service` with health check and `voice-models` volume
-- `deploy/docker-compose.prod.yml` — Added `voice-service` with health check and `voice-models` volume
+- `deploy/docker-compose.prod.yml` — Added `voice-service` with health check and `voice-models` volume; backend mounts `voice-phrases.json:ro`
 - `.github/workflows/ci.yml` — Added `build-voice` job
 
 ## Specification
@@ -60,10 +60,14 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 | `voice_service_url` | `http://voice-service:8001` | Voice inference service base URL |
 | `voice_service_timeout_seconds` | `30.0` | HTTP timeout for voice service calls |
 | `voice_http_max_retries` | `2` | Retry count on voice service failures |
-| `voice_embedding_similarity_high` | `0.50` | High-confidence embedding similarity threshold |
-| `voice_embedding_similarity_moderate` | `0.35` | Moderate-confidence embedding similarity threshold |
-| `voice_transcription_score_standard` | `0.70` | Standard transcription match threshold |
-| `voice_transcription_score_strict` | `0.90` | Strict transcription match (compensates for moderate similarity) |
+| `voice_embedding_similarity_high_en_en` | `0.55` | Embedding high threshold (same speaker, both EN) |
+| `voice_embedding_similarity_high_fa_fa` | `0.50` | Embedding high threshold (same speaker, both FA) |
+| `voice_embedding_similarity_high_en_fa` | `0.35` | Embedding high threshold (same speaker, EN-FA) |
+| `voice_embedding_similarity_delta` | `0.10` | Moderate = high − delta for the chosen pair |
+| `voice_transcription_score_standard` | `0.70` | Standard transcription threshold (English) |
+| `voice_transcription_score_strict` | `0.90` | Strict transcription threshold (English; compensates for moderate similarity) |
+| `voice_transcription_score_standard_fa` | `0.50` | Standard transcription threshold (Farsi; subsequence+homophone scoring) |
+| `voice_transcription_score_strict_fa` | `0.75` | Strict transcription threshold (Farsi) |
 | `voice_enrollment_phrases_per_session` | `3` | Phrases required per enrollment |
 | `voice_enrollment_max_phrase_failures` | `3` | Total phrase failures before blocking |
 | `voice_enrollment_attempts_per_phrase` | `2` | Retries per individual phrase |
@@ -73,6 +77,7 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 | `voice_verification_rate_limit_window_seconds` | `3600` | Rate limit window (1 hour) |
 | `voice_audio_min_duration_seconds` | `2` | Minimum audio length |
 | `voice_audio_max_duration_seconds` | `15` | Maximum audio length |
+| `voice_phrases_file` | `voice-phrases.json` | Path to external phrases JSON (gitignored, deployed as secret) |
 
 ### User Model Columns (`src/models/user.py`)
 
@@ -92,10 +97,10 @@ Computed properties:
 1. **Trigger**: `route_message` calls `_start_voice_enrollment` after successful account linking, or when an unenrolled user sends a voice message
 2. **State**: Stored in `user.bot_state_data` as dict: `{enrollment, step, phrase_ids, collected_embeddings, attempt, failures, failed_phrase_ids}`
 3. **Bot state**: `user.bot_state = "enrolling_voice"`
-4. **Per phrase**: User reads phrase → audio downloaded via `BaseChannel.download_file` → sent to voice-service → transcription score checked against `voice_transcription_score_standard`
+4. **Per phrase**: User reads phrase → audio downloaded via `BaseChannel.download_file` → sent to voice-service → transcription score checked against locale-specific standard (`voice_transcription_score_standard` for EN, `voice_transcription_score_standard_fa` for FA)
 5. **Accept**: Embedding stored in state as base64; advance to next phrase
 6. **Retry**: Attempt counter incremented; if attempts ≥ `voice_enrollment_attempts_per_phrase`, phrase replaced with a new one
-7. **Block**: If total failures ≥ `voice_enrollment_max_phrase_failures`, enrollment blocked
+7. **Block**: If total failures ≥ `voice_enrollment_max_phrase_failures`, enrollment blocked; `bot_state_data` set to `{"enrollment_blocked_at": ISO timestamp}` for 24-hour cooldown enforcement
 8. **Finalize**: After all phrases collected, `finalize_enrollment` averages embeddings, stores on user, sets `voice_enrolled_at` and `voice_verified_at`, logs `voice_enrolled` evidence event
 
 ### Verification Flow (`src/voice/verification.py`)
@@ -103,17 +108,19 @@ Computed properties:
 1. **Trigger**: `route_message` voice gate detects `is_voice_enrolled and not is_voice_session_active`
 2. **Prompt**: Random phrase selected via `pick_verification_phrase`; stored in `user.bot_state_data["phrase_id"]`
 3. **Bot state**: `user.bot_state = "awaiting_voice"`
-4. **Check**: Audio processed by voice-service → `cosine_similarity` against stored embedding + `word_overlap_score` against expected phrase → `voice_decision` applies dual-threshold matrix
+4. **Check**: Audio processed by voice-service → `cosine_similarity` against stored embedding + transcription score (Farsi uses subsequence+homophones) → `voice_decision` applies dual-threshold matrix with locale-specific transcription thresholds (EN: standard 0.70, strict 0.90; FA: standard 0.50, strict 0.75)
 5. **Accept**: `voice_verified_at` updated, `voice_verified` evidence logged, user proceeds to main menu
 6. **Reject**: New phrase prompted (re-verification)
 7. **Rate limit**: `check_voice_rate_limit` (5 attempts/hour per user) checked before each attempt
 
 ### Decision Matrix (`src/voice/scoring.py: voice_decision`)
 
+`sim_high` and `sim_moderate` are locale-based (EN-EN: 0.55 / 0.45, FA-FA: 0.50 / 0.40; moderate = high − 0.10). Transcription thresholds are locale-specific (EN 0.70/0.90, FA 0.50/0.75).
+
 | Embedding Similarity | Transcription Score | Result |
 |---------------------|---------------------|--------|
-| ≥ `sim_high` (0.50) | ≥ `trans_standard` (0.70) | **accept** |
-| ≥ `sim_moderate` (0.35) | ≥ `trans_strict` (0.90) | **accept** |
+| ≥ `sim_high` | ≥ `trans_standard` | **accept** |
+| ≥ `sim_moderate` | ≥ `trans_strict` | **accept** |
 | Otherwise | — | **reject** |
 
 ### Voice Gate in `route_message`
@@ -132,11 +139,14 @@ Session extension: `voice_verified_at` updated on successful vote and endorsemen
 Separate FastAPI container running SpeechBrain ECAPA-TDNN and WhisperX on CPU.
 
 - **Endpoints**: `GET /health` (model readiness), `POST /process` (embedding + transcription)
-- **Input**: `ProcessRequest` with `audio_b64` (base64-encoded audio) and `expected_phrase`
-- **Output**: `ProcessResponse` with `transcription`, `transcription_score` (word overlap), `embedding` (192 floats), `model_version`
-- **Audio pipeline**: Base64 decode → pydub convert to 16kHz mono WAV → parallel embedding extraction + transcription
+- **Input**: `ProcessRequest` with `audio_b64` (base64-encoded audio), `expected_phrase`, and optional `language` (e.g. `"en"`, `"fa"`) for WhisperX; when set, improves transcription accuracy for short clips (backend passes user locale)
+- **Output**: `ProcessResponse` with `transcription`, `transcription_score` (language-dependent, see below), `embedding` (192 floats), `model_version`
+- **Audio pipeline**: Base64 decode → pydub convert to 16kHz mono WAV → embedding extraction + transcription (with optional language hint)
+- **Transcription scoring**:
+  - **English (default)**: `word_overlap_score` — fraction of expected words that appear exactly in the transcription (set overlap).
+  - **Farsi (`language == "fa"`)**: `_farsi_phrase_score` — per-word similarity then average. For each expected word, best match over transcribed words is computed using: (1) **subsequence match**: expected letters must appear in the transcribed word in the same order; extra letters in the transcription are allowed (e.g. لطفا vs لوتفن). (2) **Homophone equivalence**: the following Persian letters are treated as the same sound when comparing: ت/ط, س/ص/ث, ز/ظ/ض/ذ, ق/غ, ح/ه (sources: LELB Society, Wikipedia Persian phonology). Score per word = (matched length in order) / (expected word length), in [0, 1].
 - **Threading**: Sync route handlers — FastAPI auto-runs in thread pool to avoid blocking the event loop
-- **Docker**: `python:3.11-slim`, CPU-only PyTorch via `--index-url https://download.pytorch.org/whl/cpu`, SpeechBrain model pre-downloaded at build time, `voice-models` volume for caching
+- **Docker**: `python:3.11-slim`, CPU-only PyTorch via `--index-url https://download.pytorch.org/whl/cpu`, SpeechBrain model pre-downloaded at build time, `voice-models` volume for caching. WhisperX model: `small` (better Farsi/EN accuracy than `base`).
 - **Health check**: `interval=30s, start_period=120s` (model loading takes ~60-90s)
 
 ### Evidence Logging
@@ -159,8 +169,9 @@ Separate FastAPI container running SpeechBrain ECAPA-TDNN and WhisperX on CPU.
 - Evidence log entries contain only scores and phrase IDs — never raw audio, embeddings, or biometric data
 - All voice settings config-backed via `src/config.py` — no magic numbers in business logic
 - Voice service runs CPU-only; no GPU dependency
+- Phrase pools loaded from external JSON file (`voice-phrases.json`), gitignored and deployed as a secret via `push-env.sh`; pool sizes are dynamic (200 EN purpose-written ESL-friendly phrases, 200 FA purpose-written everyday phrases, all 5-8 words each)
 - Phrase selection uses `secrets.randbelow` for cryptographic randomness
-- Rate limiting via in-process sliding-window counter (5 attempts/hour per user)
+- Rate limiting via in-process sliding-window counter (config-backed limits)
 - No pyannote.audio or speaker diarization — verification is speaker-to-embedding comparison only
 
 ## Tests

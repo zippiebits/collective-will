@@ -54,10 +54,17 @@ class Settings(BaseSettings):
     voice_service_url: str = "http://voice-service:8001"
     voice_service_timeout_seconds: float = 30.0
     voice_http_max_retries: int = 2
-    voice_embedding_similarity_high: float = 0.50
-    voice_embedding_similarity_moderate: float = 0.35
+    # Embedding similarity: per language-pair high; moderate = high - delta (relations from test fixtures)
+    voice_embedding_similarity_high_en_en: float = 0.55
+    voice_embedding_similarity_high_fa_fa: float = 0.50
+    voice_embedding_similarity_high_en_fa: float = 0.35
+    voice_embedding_similarity_delta: float = 0.10  # moderate = high - delta
+    # English transcription thresholds (word-overlap)
     voice_transcription_score_standard: float = 0.70
     voice_transcription_score_strict: float = 0.90
+    # Farsi transcription thresholds (subsequence + homophones; typically lower scores)
+    voice_transcription_score_standard_fa: float = 0.50
+    voice_transcription_score_strict_fa: float = 0.75
     voice_enrollment_phrases_per_session: int = 3
     voice_enrollment_max_phrase_failures: int = 3
     voice_enrollment_attempts_per_phrase: int = 2
@@ -67,6 +74,7 @@ class Settings(BaseSettings):
     voice_verification_rate_limit_window_seconds: int = 3600
     voice_audio_min_duration_seconds: int = 2
     voice_audio_max_duration_seconds: int = 15
+    voice_phrases_file: str = "voice-phrases.json"
 
     ops_console_enabled: bool = False
     ops_console_show_in_nav: bool = False

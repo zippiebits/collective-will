@@ -1,0 +1,77 @@
+{
+  "speakers": ["s1", "s2"],
+  "samples": [
+    {
+      "file": "en-01-s1.ogg",
+      "locale": "en",
+      "speaker": "s1",
+      "expected_phrase": "The meeting ended earlier than we expected"
+    },
+    {
+      "file": "en-02-s1.ogg",
+      "locale": "en",
+      "speaker": "s1",
+      "expected_phrase": "She smiled and said thank you very much"
+    },
+    {
+      "file": "en-03-s1.ogg",
+      "locale": "en",
+      "speaker": "s1",
+      "expected_phrase": "He writes in his notebook every single day"
+    },
+    {
+      "file": "fa-01-s1.ogg",
+      "locale": "fa",
+      "speaker": "s1",
+      "expected_phrase": "گلدان را از روی میز برداشت"
+    },
+    {
+      "file": "fa-02-s1.ogg",
+      "locale": "fa",
+      "speaker": "s1",
+      "expected_phrase": "فردا صبح باید زود بیدار بشویم"
+    },
+    {
+      "file": "fa-03-s1.ogg",
+      "locale": "fa",
+      "speaker": "s1",
+      "expected_phrase": "لطفا کمی آرام‌تر حرف بزن"
+    },
+    {
+      "file": "en-01-s2.ogg",
+      "locale": "en",
+      "speaker": "s2",
+      "expected_phrase": "The meeting ended earlier than we expected"
+    },
+    {
+      "file": "en-02-s2.ogg",
+      "locale": "en",
+      "speaker": "s2",
+      "expected_phrase": "She smiled and said thank you very much"
+    },
+    {
+      "file": "en-03-s2.ogg",
+      "locale": "en",
+      "speaker": "s2",
+      "expected_phrase": "He writes in his notebook every single day"
+    },
+    {
+      "file": "fa-01-s2.ogg",
+      "locale": "fa",
+      "speaker": "s2",
+      "expected_phrase": "گلدان را از روی میز برداشت"
+    },
+    {
+      "file": "fa-02-s2.ogg",
+      "locale": "fa",
+      "speaker": "s2",
+      "expected_phrase": "فردا صبح باید زود بیدار بشویم"
+    },
+    {
+      "file": "fa-03-s2.ogg",
+      "locale": "fa",
+      "speaker": "s2",
+      "expected_phrase": "لطفا کمی آرام‌تر حرف بزن"
+    }
+  ]
+}

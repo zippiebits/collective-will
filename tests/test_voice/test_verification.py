@@ -13,10 +13,14 @@ from src.voice.verification import pick_verification_phrase, verify_voice
 @pytest.fixture(autouse=True)
 def _mock_settings() -> None:  # type: ignore[misc]
     mock_settings = MagicMock()
-    mock_settings.voice_embedding_similarity_high = 0.50
-    mock_settings.voice_embedding_similarity_moderate = 0.35
+    mock_settings.voice_embedding_similarity_high_en_en = 0.55
+    mock_settings.voice_embedding_similarity_high_fa_fa = 0.50
+    mock_settings.voice_embedding_similarity_high_en_fa = 0.35
+    mock_settings.voice_embedding_similarity_delta = 0.10
     mock_settings.voice_transcription_score_standard = 0.70
     mock_settings.voice_transcription_score_strict = 0.90
+    mock_settings.voice_transcription_score_standard_fa = 0.50
+    mock_settings.voice_transcription_score_strict_fa = 0.75
     mock_settings.voice_audio_min_duration_seconds = 2
     mock_settings.voice_audio_max_duration_seconds = 15
     mock_settings.voice_service_url = "http://test:8001"

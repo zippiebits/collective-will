@@ -74,6 +74,24 @@ Secure the files:
 chmod 600 /opt/collective-will/production/.env.secrets /opt/collective-will/staging/.env.secrets
 ```
 
+### Voice phrases
+
+The voice verification phrase pool is stored in `voice-phrases.json` (gitignored).
+Push it to the VPS alongside secrets:
+
+```bash
+./scripts/push-env.sh staging    # pushes .env + voice-phrases.json
+```
+
+Or copy manually:
+
+```bash
+scp voice-phrases.json deploy@YOUR_VPS:/opt/collective-will/production/voice-phrases.json
+chmod 600 /opt/collective-will/production/voice-phrases.json
+```
+
+See `voice-phrases.json.example` for the expected format.
+
 During deploy, the workflow copies `deploy/public.env.production` and `deploy/public.env.staging`
 from the repository to `/opt/collective-will/repo-deploy/`, and `deploy.sh` builds runtime
 `/opt/collective-will/<env>/.env` by merging:

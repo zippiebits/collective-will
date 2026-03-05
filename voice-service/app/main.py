@@ -55,7 +55,9 @@ def process(req: ProcessRequest) -> ProcessResponse:
 
     wav_bytes = convert_to_wav16k(audio_bytes)
     embedding = extract_embedding(wav_bytes)
-    transcription, transcription_score = transcribe_audio(wav_bytes, req.expected_phrase)
+    transcription, transcription_score = transcribe_audio(
+        wav_bytes, req.expected_phrase, language=req.language
+    )
 
     return ProcessResponse(
         transcription=transcription,

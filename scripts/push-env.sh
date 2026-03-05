@@ -100,11 +100,25 @@ awk -F= '
 } > "$TMP_MERGED_ENV"
 rm -f "${TMP_MERGED_ENV}.secrets"
 
+LOCAL_VOICE_PHRASES="${REPO_ROOT}/voice-phrases.json"
+REMOTE_VOICE_PHRASES="${REMOTE_DIR}/voice-phrases.json"
+
 echo "==> Pushing merged env (deploy/public.env.${ENV} + .env.secrets) → ${VPS}:${REMOTE_PATH}"
 
 ssh "$VPS" "mkdir -p ${REMOTE_DIR}"
 scp "$TMP_MERGED_ENV" "${VPS}:${REMOTE_PATH}"
 ssh "$VPS" "chmod 600 ${REMOTE_PATH}"
 
+if [[ -f "$LOCAL_VOICE_PHRASES" ]]; then
+  echo "==> Pushing voice-phrases.json → ${VPS}:${REMOTE_VOICE_PHRASES}"
+  scp "$LOCAL_VOICE_PHRASES" "${VPS}:${REMOTE_VOICE_PHRASES}"
+  ssh "$VPS" "chmod 600 ${REMOTE_VOICE_PHRASES}"
+else
+  echo "==> Skipping voice-phrases.json (not found at ${LOCAL_VOICE_PHRASES})"
+fi
+
 echo "==> Done. Verifying..."
 ssh "$VPS" "wc -l ${REMOTE_PATH} && echo 'Permissions:' && ls -la ${REMOTE_PATH}"
+if [[ -f "$LOCAL_VOICE_PHRASES" ]]; then
+  ssh "$VPS" "echo 'Voice phrases:' && wc -l ${REMOTE_VOICE_PHRASES} && ls -la ${REMOTE_VOICE_PHRASES}"
+fi
