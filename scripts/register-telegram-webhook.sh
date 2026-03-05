@@ -2,11 +2,31 @@
 set -euo pipefail
 
 # Register the Telegram bot webhook URL.
-# Usage: ./scripts/register-telegram-webhook.sh <bot-token> <public-base-url>
-# Example: ./scripts/register-telegram-webhook.sh "123:ABC" "https://staging.collectivewill.org"
+# Usage: ./scripts/register-telegram-webhook.sh [bot-token] [public-base-url]
+#   If omitted, token is read from .env.secrets (TELEGRAM_BOT_TOKEN).
+#   If base URL omitted, read from deploy/public.env.staging (APP_PUBLIC_BASE_URL).
 
-TOKEN="${1:?Usage: register-telegram-webhook.sh <bot-token> <public-base-url>}"
-BASE_URL="${2:?Usage: register-telegram-webhook.sh <bot-token> <public-base-url>}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ENV_SECRETS="${REPO_ROOT}/.env.secrets"
+PUBLIC_STAGING="${REPO_ROOT}/deploy/public.env.staging"
+
+if [[ -z "${1:-}" ]] && [[ -f "$ENV_SECRETS" ]]; then
+  TELEGRAM_BOT_TOKEN=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$ENV_SECRETS" 2>/dev/null | cut -d= -f2- | sed 's/^"//;s/"$//' | head -1)
+fi
+if [[ -z "${2:-}" ]] && [[ -f "$PUBLIC_STAGING" ]]; then
+  APP_PUBLIC_BASE_URL=$(grep -E '^APP_PUBLIC_BASE_URL=' "$PUBLIC_STAGING" 2>/dev/null | cut -d= -f2- | head -1)
+fi
+
+TOKEN="${1:-${TELEGRAM_BOT_TOKEN:-}}"
+BASE_URL="${2:-${APP_PUBLIC_BASE_URL:-}}"
+
+if [[ -z "$TOKEN" ]] || [[ -z "$BASE_URL" ]]; then
+  echo "Usage: $0 [bot-token] [public-base-url]" >&2
+  echo "  Token from .env.secrets (TELEGRAM_BOT_TOKEN) if not passed." >&2
+  echo "  Base URL from deploy/public.env.staging (APP_PUBLIC_BASE_URL) if not passed." >&2
+  exit 1
+fi
 
 WEBHOOK_URL="${BASE_URL}/api/webhooks/telegram"
 

@@ -1282,6 +1282,17 @@ async def route_message(
         user = user_result.scalar_one_or_none()
         if user is None:
             return "ignored"
+
+        # Voice gate for callbacks (same as for text): require enrollment then active session
+        if not user.is_voice_enrolled:
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_enroll_needed"),
+            ))
+            return "voice_enrollment_needed"
+        if not user.is_voice_session_active:
+            return await _start_voice_verification(user, message, channel, session)
+
         return await _route_callback(user, message, channel, session)
 
     user_result = await session.execute(

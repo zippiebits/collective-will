@@ -247,7 +247,35 @@ A fresh genesis entry will be created on the first evidence append.
 
 **Never run this on production without explicit confirmation.**
 
+## Checking Telegram (token and webhook)
+
+To confirm the bot token is valid and the webhook is set (so Telegram sends updates to your server):
+
+```bash
+# From repo root — use your staging bot token
+./scripts/check-telegram.sh "YOUR_BOT_TOKEN"
+
+# Or with token in env (e.g. from .env.secrets)
+export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
+./scripts/check-telegram.sh
+```
+
+The script calls Telegram’s `getMe` (validates token, prints bot username) and `getWebhookInfo` (shows current webhook URL). If the webhook is not set or points elsewhere, button clicks and messages will not reach your backend.
+
+To set or update the webhook (e.g. for staging):
+
+```bash
+./scripts/register-telegram-webhook.sh "YOUR_BOT_TOKEN" "https://staging.collectivewill.org"
+```
+
+If you use `TELEGRAM_WEBHOOK_SECRET`, register the secret with Telegram when calling `setWebhook` (e.g. add `secret_token` as in the security doc) so the backend can verify webhook requests.
+
+Unit tests for the Telegram webhook (with a fake token) live in `tests/test_api/test_webhooks.py`. There is no in-repo test that calls the real Telegram API to validate a token; use `scripts/check-telegram.sh` for that.
+
 ## Troubleshooting
+
+**Bot: clicking Submit or other buttons does nothing**  
+Telegram is not sending updates to your server. Run `./scripts/check-telegram.sh <token>`. If the webhook is empty or wrong, run `./scripts/register-telegram-webhook.sh <token> <base-url>` so the webhook points at your backend (e.g. `https://staging.collectivewill.org/api/webhooks/telegram`). Then try the button again and check `docker compose logs backend --tail=50` for incoming webhook requests.
 
 ```bash
 # Check running containers
