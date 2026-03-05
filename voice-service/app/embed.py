@@ -6,6 +6,7 @@ import io
 import logging
 import os
 
+import numpy  # noqa: F401 — must be imported before torch to avoid double-load of C extension
 import torch
 import torchaudio
 from speechbrain.inference.speaker import EncoderClassifier

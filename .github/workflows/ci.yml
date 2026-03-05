@@ -160,7 +160,25 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push voice-service
+      - name: Build voice-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./voice-service
+          load: true
+          tags: ${{ env.VOICE_IMAGE }}:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test voice-service image
+        run: |
+          echo "==> Testing numpy/torch imports..."
+          docker run --rm ${{ env.VOICE_IMAGE }}:ci-test \
+            python -c "import numpy; import torch; import torchaudio; print(f'numpy={numpy.__version__} torch={torch.__version__}')"
+          echo "==> Testing app module imports..."
+          docker run --rm ${{ env.VOICE_IMAGE }}:ci-test \
+            python -c "from app.embed import load_model; from app.transcribe import load_model; print('app imports ok')"
+
+      - name: Push voice-service image
         uses: docker/build-push-action@v6
         with:
           context: ./voice-service

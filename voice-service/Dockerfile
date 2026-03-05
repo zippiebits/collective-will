@@ -22,6 +22,7 @@ EncoderClassifier.from_hparams( \
 )"
 
 ENV PYTHONUNBUFFERED=1
+ENV OPENBLAS_NUM_THREADS=1
 
 EXPOSE 8001
 

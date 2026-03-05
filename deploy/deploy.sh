@@ -227,7 +227,10 @@ if [[ -n "$STALE" ]]; then
   echo "$STALE" | xargs -r docker rm -f
 fi
 
+PULL_START=$(date +%s)
 pull_with_retry
+PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
+echo "==> Image pull completed in ${PULL_ELAPSED}s"
 
 echo "==> Starting services..."
 docker compose up -d --remove-orphans
