@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.channels.types import UnifiedMessage
+from src.config import get_settings
 from src.handlers.commands import route_message
+
+# Committed fixture so tests run without gitignored voice-phrases.json (CI/local)
+_VOICE_PHRASES_FIXTURE = (Path(__file__).resolve().parent.parent / "fixtures" / "voice-phrases.json")
+
+
+def _voice_phrases_settings():
+    """Real settings with voice_phrases_file pointing at the test fixture. Call once before patching."""
+    return get_settings().model_copy(update={"voice_phrases_file": str(_VOICE_PHRASES_FIXTURE)})
 
 
 def _make_user(
@@ -83,7 +93,11 @@ class TestVoiceGateNotEnrolled:
         mock_result.scalar_one_or_none.return_value = user
         session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll:
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
             mock_enroll.return_value = {
                 "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
                 "collected_embeddings": [], "attempt": 0, "failures": 0,
@@ -108,7 +122,11 @@ class TestVoiceGateExpiredSession:
         mock_result.scalar_one_or_none.return_value = user
         session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("src.handlers.commands.check_voice_rate_limit", return_value=True):
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.check_voice_rate_limit", return_value=True),
+        ):
             result = await route_message(session=session, message=msg, channel=channel)
 
         assert result == "voice_verification_prompted"
@@ -188,7 +206,11 @@ class TestEnrollmentCooldown:
         mock_result.scalar_one_or_none.return_value = user
         session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll:
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
             mock_enroll.return_value = {
                 "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
                 "collected_embeddings": [], "attempt": 0, "failures": 0,
