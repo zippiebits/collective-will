@@ -105,7 +105,10 @@ def test_telegram_webhook_accepts_valid_message(
     assert response.json()["status"] == "accepted"
 
 
-def test_telegram_webhook_ignores_non_text(monkeypatch: pytest.MonkeyPatch) -> None:
+@patch("src.channels.telegram.get_or_create_account_ref", new_callable=AsyncMock, return_value="opaque-ref")
+def test_telegram_webhook_ignores_non_text(
+    mock_mapping: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-bot-token")
     from src.config import get_settings
 
