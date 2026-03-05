@@ -66,8 +66,9 @@ services:
     environment:
       # No-AVX / QEMU CPUs: disable MKLDNN so inference works (see deploy-failures-2025-03.md)
       VOICE_DISABLE_MKLDNN: "1"
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
+      # Use 2 threads on 2-vCPU hosts to speed up CPU inference (~30–50% faster)
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s

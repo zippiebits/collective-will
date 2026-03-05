@@ -90,10 +90,11 @@ oneDNN/MKLDNN backends in PyTorch can fail to create primitives on CPUs without 
 
 ### Fixes applied
 
-1. **Compose** (`deploy/docker-compose.prod.yml`): voice-service env `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1` to reduce thread/backend init issues.
-2. **Voice-service code** (`voice-service/app/embed.py`): run `model.encode_batch(waveform)` inside `torch.backends.mkldnn.flags(enabled=False)` so the oneDNN path is skipped; PyTorch uses the non-MKLDNN CPU path (slower but compatible with no-AVX / QEMU CPUs).
+1. **Compose** (`deploy/docker-compose.prod.yml`): voice-service env `VOICE_DISABLE_MKLDNN=1`, `OMP_NUM_THREADS=2`, `MKL_NUM_THREADS=2` (2 threads to use both vCPUs and speed up inference; MKLDNN disabled for compatibility).
+2. **Voice-service code** (`voice-service/app/embed.py`): when `VOICE_DISABLE_MKLDNN=1`, run `model.encode_batch(waveform)` inside `torch.backends.mkldnn.flags(enabled=False)` so the oneDNN path is skipped.
+3. **Voice-service** (`voice-service/app/main.py`, `Dockerfile`): `USE_NNPACK=0` and Python warning filters to reduce NNPACK/oneDNN log spam on no-AVX CPUs. Inference on 2 vCPUs can take ~30–60 s; backend timeout for staging is 90 s (`VOICE_SERVICE_TIMEOUT_SECONDS` in `deploy/public.env.staging`).
 
-After rebuilding and pushing the voice-service image and redeploying (or updating the image on staging), enrollment/verification should proceed without this runtime error.
+After rebuilding and pushing the voice-service image and redeploying, enrollment/verification should complete without runtime error; first request may take up to ~1 minute on staging’s CPU.
 
 ---
 

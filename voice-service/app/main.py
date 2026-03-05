@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import warnings
+
+# Disable NNPACK before any torch import (avoids "Unsupported hardware" spam on no-AVX CPUs)
+os.environ.setdefault("USE_NNPACK", "0")
+
+# Suppress noisy torch/torchaudio oneDNN warnings on limited CPUs (NNPACK spam needs USE_NNPACK=0)
+warnings.filterwarnings("ignore", message=".*torchaudio.*torchcodec.*")
+warnings.filterwarnings("ignore", message=".*oneDNN.*Intel GPU.*")
+
 import base64
 import logging
 from contextlib import asynccontextmanager

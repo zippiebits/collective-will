@@ -23,6 +23,8 @@ EncoderClassifier.from_hparams( \
 
 ENV PYTHONUNBUFFERED=1
 ENV OPENBLAS_NUM_THREADS=1
+# No-AVX / cloud CPUs: avoid NNPACK init attempts and warning spam
+ENV USE_NNPACK=0
 
 EXPOSE 8001
 
