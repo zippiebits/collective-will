@@ -17,13 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare deploy bundle (templates for VPS)
+        run: |
+          cp .env.secrets.example deploy/.env.secrets.example
+          cp voice-phrases.json.example deploy/voice-phrases.json.example
+
       - name: Copy deploy files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "deploy/docker-compose.prod.yml,deploy/deploy.sh,deploy/Caddyfile,deploy/public.env.staging,deploy/public.env.production"
+          source: "deploy/docker-compose.prod.yml,deploy/deploy.sh,deploy/Caddyfile,deploy/public.env.staging,deploy/public.env.production,deploy/.env.secrets.example,deploy/voice-phrases.json.example"
           target: /opt/collective-will/repo-deploy
           strip_components: 1
 

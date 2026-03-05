@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Push merged local env config to the VPS.
-# Public config is tracked in deploy/public.env.<env>.
-# Secrets come from .env.secrets (repo root). Optional deploy/.env.<env> overrides per-environment values.
+# Push all env and voice config to the VPS in one script.
+# Sends: merged .env (public + secrets), .env.secrets, and voice-phrases.json.
+# Public config: deploy/public.env.<env>. Secrets: .env.secrets (repo root).
+# Optional: deploy/.env.<env> for per-environment overrides.
 #
 # Usage: ./scripts/push-env.sh <staging|production> [user@host]
 #
@@ -27,6 +28,9 @@ LOCAL_SECRETS="${REPO_ROOT}/.env.secrets"
 LOCAL_ENV_OVERRIDES="${REPO_ROOT}/deploy/.env.${ENV}"
 REMOTE_DIR="/opt/collective-will/${ENV}"
 REMOTE_PATH="${REMOTE_DIR}/.env"
+REMOTE_SECRETS="${REMOTE_DIR}/.env.secrets"
+LOCAL_VOICE_PHRASES="${REPO_ROOT}/voice-phrases.json"
+REMOTE_VOICE_PHRASES="${REMOTE_DIR}/voice-phrases.json"
 TMP_MERGED_ENV="$(mktemp)"
 TMP_SECRETS="$(mktemp)"
 
@@ -41,8 +45,12 @@ if [[ ! -f "$LOCAL_PUBLIC_ENV" ]]; then
 fi
 
 if [[ ! -f "$LOCAL_SECRETS" ]]; then
-  echo "Error: ${LOCAL_SECRETS} not found" >&2
+  echo "Error: ${LOCAL_SECRETS} not found. Create from .env.secrets.example and fill in values." >&2
   exit 1
+fi
+
+if [[ ! -f "$LOCAL_VOICE_PHRASES" ]]; then
+  echo "Warning: ${LOCAL_VOICE_PHRASES} not found. Voice verification will fail until you push it." >&2
 fi
 
 # Merge secrets: .env.secrets base, then deploy/.env.<env> overrides (if present)
@@ -100,25 +108,31 @@ awk -F= '
 } > "$TMP_MERGED_ENV"
 rm -f "${TMP_MERGED_ENV}.secrets"
 
-LOCAL_VOICE_PHRASES="${REPO_ROOT}/voice-phrases.json"
-REMOTE_VOICE_PHRASES="${REMOTE_DIR}/voice-phrases.json"
-
-echo "==> Pushing merged env (deploy/public.env.${ENV} + .env.secrets) → ${VPS}:${REMOTE_PATH}"
+echo "==> Pushing env and secrets to ${VPS}:${REMOTE_DIR}"
 
 ssh "$VPS" "mkdir -p ${REMOTE_DIR}"
+
+# Merged .env (public + secrets) for standalone use / legacy deploy source
+echo "==> Pushing merged .env (deploy/public.env.${ENV} + .env.secrets)"
 scp "$TMP_MERGED_ENV" "${VPS}:${REMOTE_PATH}"
 ssh "$VPS" "chmod 600 ${REMOTE_PATH}"
 
+# .env.secrets so deploy.sh can merge with public during deploy
+echo "==> Pushing .env.secrets"
+scp "$LOCAL_SECRETS" "${VPS}:${REMOTE_SECRETS}"
+ssh "$VPS" "chmod 600 ${REMOTE_SECRETS}"
+
+# Voice phrase pool (required for voice verification)
 if [[ -f "$LOCAL_VOICE_PHRASES" ]]; then
-  echo "==> Pushing voice-phrases.json → ${VPS}:${REMOTE_VOICE_PHRASES}"
+  echo "==> Pushing voice-phrases.json"
   scp "$LOCAL_VOICE_PHRASES" "${VPS}:${REMOTE_VOICE_PHRASES}"
   ssh "$VPS" "chmod 600 ${REMOTE_VOICE_PHRASES}"
 else
-  echo "==> Skipping voice-phrases.json (not found at ${LOCAL_VOICE_PHRASES})"
+  echo "==> Skipping voice-phrases.json (file not found; copy voice-phrases.json.example and fill to enable voice)"
 fi
 
 echo "==> Done. Verifying..."
-ssh "$VPS" "wc -l ${REMOTE_PATH} && echo 'Permissions:' && ls -la ${REMOTE_PATH}"
+ssh "$VPS" "echo '.env:' && wc -l ${REMOTE_PATH} && ls -la ${REMOTE_PATH} && echo '.env.secrets:' && wc -l ${REMOTE_SECRETS} && ls -la ${REMOTE_SECRETS}"
 if [[ -f "$LOCAL_VOICE_PHRASES" ]]; then
-  ssh "$VPS" "echo 'Voice phrases:' && wc -l ${REMOTE_VOICE_PHRASES} && ls -la ${REMOTE_VOICE_PHRASES}"
+  ssh "$VPS" "echo 'voice-phrases.json:' && wc -l ${REMOTE_VOICE_PHRASES} && ls -la ${REMOTE_VOICE_PHRASES}"
 fi

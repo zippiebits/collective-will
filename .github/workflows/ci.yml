@@ -70,6 +70,18 @@ jobs:
       - name: Web parity checks
         run: bash scripts/ci-web.sh
 
+  test-voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Voice parity checks
+        run: bash scripts/ci-voice.sh
+
   build-backend:
     needs: [test-backend]
     if: github.event_name != 'pull_request'
@@ -131,6 +143,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-voice:
+    needs: [test-voice]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:

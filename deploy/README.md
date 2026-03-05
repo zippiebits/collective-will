@@ -74,23 +74,25 @@ Secure the files:
 chmod 600 /opt/collective-will/production/.env.secrets /opt/collective-will/staging/.env.secrets
 ```
 
-### Voice phrases
+### Voice phrases and env (preferred: one script)
 
-The voice verification phrase pool is stored in `voice-phrases.json` (gitignored).
-Push it to the VPS alongside secrets:
+Push all secrets and voice config in one go:
 
 ```bash
-./scripts/push-env.sh staging    # pushes .env + voice-phrases.json
+# From repo root: requires .env.secrets and optional voice-phrases.json
+./scripts/push-env.sh staging    # or production
 ```
 
-Or copy manually:
+This pushes to the VPS: merged `.env`, `.env.secrets`, and `voice-phrases.json` (if present).
+Deploy then uses `.env.secrets` when merging during `deploy.sh`. Create `voice-phrases.json` from
+`voice-phrases.json.example` so voice verification works.
+
+To copy voice-phrases only (manual):
 
 ```bash
 scp voice-phrases.json deploy@YOUR_VPS:/opt/collective-will/production/voice-phrases.json
-chmod 600 /opt/collective-will/production/voice-phrases.json
+ssh deploy@YOUR_VPS "chmod 600 /opt/collective-will/production/voice-phrases.json"
 ```
-
-See `voice-phrases.json.example` for the expected format.
 
 During deploy, the workflow copies `deploy/public.env.production` and `deploy/public.env.staging`
 from the repository to `/opt/collective-will/repo-deploy/`, and `deploy.sh` builds runtime
@@ -195,7 +197,8 @@ These environment variables can tune deploy behavior:
 │   ├── docker-compose.prod.yml
 │   ├── deploy.sh
 │   ├── Caddyfile
-│   ├── .env.secrets.example  # Template for secrets (copied from repo root)
+│   ├── .env.secrets.example   # Template for secrets (from repo root)
+│   ├── voice-phrases.json.example  # Template for voice phrase pool
 │   ├── public.env.production
 │   └── public.env.staging
 ├── production/
