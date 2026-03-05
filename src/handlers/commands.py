@@ -1028,8 +1028,15 @@ async def _start_voice_enrollment(
             return "voice_enrollment_cooldown"
         user.bot_state_data = None
 
-    state = await start_enrollment(user)
-    _, phrase_text = get_current_phrase(state, user.locale)
+    try:
+        state = await start_enrollment(user)
+        _, phrase_text = get_current_phrase(state, user.locale)
+    except OSError:
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_enroll_error"),
+        ))
+        return "voice_enrollment_error"
 
     user.bot_state = "enrolling_voice"
     user.bot_state_data = state
@@ -1058,14 +1065,21 @@ async def _handle_enrollment_voice(
     if not state.get("enrollment"):
         return await _start_voice_enrollment(user, message, channel, db)
 
-    status, updated_state = await process_enrollment_audio(
-        user=user,
-        state=state,
-        channel=channel,
-        file_id=message.voice_file_id or "",
-        duration=message.voice_duration,
-        session=db,
-    )
+    try:
+        status, updated_state = await process_enrollment_audio(
+            user=user,
+            state=state,
+            channel=channel,
+            file_id=message.voice_file_id or "",
+            duration=message.voice_duration,
+            session=db,
+        )
+    except OSError:
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_enroll_error"),
+        ))
+        return "voice_enrollment_error"
 
     locale = user.locale
 

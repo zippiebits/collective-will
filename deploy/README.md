@@ -87,11 +87,11 @@ This pushes to the VPS: merged `.env`, `.env.secrets`, and `voice-phrases.json` 
 Deploy then uses `.env.secrets` when merging during `deploy.sh`. Create `voice-phrases.json` from
 `voice-phrases.json.example` so voice verification works.
 
-To copy voice-phrases only (manual):
+To copy voice-phrases only (manual). Use `chmod 644` so the backend container (non-root) can read the mounted file:
 
 ```bash
 scp voice-phrases.json deploy@YOUR_VPS:/opt/collective-will/production/voice-phrases.json
-ssh deploy@YOUR_VPS "chmod 600 /opt/collective-will/production/voice-phrases.json"
+ssh deploy@YOUR_VPS "chmod 644 /opt/collective-will/production/voice-phrases.json"
 ```
 
 During deploy, the workflow copies `deploy/public.env.production` and `deploy/public.env.staging`

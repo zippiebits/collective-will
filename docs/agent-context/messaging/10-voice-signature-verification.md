@@ -183,8 +183,14 @@ Separate FastAPI container running SpeechBrain ECAPA-TDNN and faster-whisper on 
 | `tests/test_voice/test_client.py` | `VoiceServiceClient`: success, retry on failure, health check |
 | `tests/test_voice/test_enrollment.py` | State machine: init, phrase accept/retry/replace/block, finalize |
 | `tests/test_voice/test_verification.py` | Accept, reject, audio error, service error, evidence logging |
-| `tests/test_handlers/test_commands_voice.py` | Voice gate integration: enrollment start, verification flow, session extension, rate limiting |
+| `tests/test_handlers/test_commands_voice.py` | Voice gate integration: enrollment start, verification flow, session extension, rate limiting; **service_error and phrases file OSError** so user gets voice_enroll_error (not 500) |
 | `tests/test_channels/test_telegram_voice.py` | Voice message parsing, file download |
+
+### Catching voice errors earlier (local / CI)
+
+- **Phrases file unreadable** (e.g. PermissionError on VPS): Handlers catch `OSError` in `_start_voice_enrollment` and `_handle_enrollment_voice` and send `voice_enroll_error`; tests in `test_commands_voice` assert this path. Deploy: use `chmod 644` for `voice-phrases.json` (see `scripts/push-env.sh`, `deploy/README.md`).
+- **Voice-service failure** (500, timeout, RuntimeError in container): `process_enrollment_audio` catches `Exception` from the client and returns `service_error`; handler sends `voice_enroll_error`. Tests: `test_commands_voice` (handler path), `test_enrollment` (unit: client raises → service_error).
+- **Voice-service runtime errors** (e.g. PyTorch "could not create a primitive"): Occur inside the voice-service container at request time. CI does not run the full voice-service with real models; `build-voice` only smoke-tests imports. To catch these before VPS: optionally add a CI job that runs the voice-service image and `POST /process` with minimal WAV (expensive, runner CPU may differ from VPS).
 
 ### Migration
 

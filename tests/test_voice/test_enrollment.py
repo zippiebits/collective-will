@@ -119,6 +119,29 @@ class TestProcessEnrollmentAudio:
         assert updated["attempt"] == 1
 
     @pytest.mark.asyncio
+    async def test_voice_service_raises_returns_service_error(self) -> None:
+        """When VoiceServiceClient.process_audio raises (500, timeout, etc.), return service_error."""
+        state = init_enrollment_state("en")
+        user = MagicMock()
+        user.locale = "en"
+        channel = AsyncMock()
+        channel.download_file = AsyncMock(return_value=b"fake-audio")
+        session = AsyncMock()
+
+        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.process_audio.side_effect = Exception("voice-service 500")
+            MockClient.return_value = mock_client
+
+            status, updated = await process_enrollment_audio(
+                user=user, state=state, channel=channel,
+                file_id="test_file", duration=5, session=session,
+            )
+
+        assert status == "service_error"
+        assert updated == state
+
+    @pytest.mark.asyncio
     async def test_enrollment_complete_after_all_phrases(self) -> None:
         fake_embedding = [0.1] * 192
         emb_bytes = struct.pack(f"<{len(fake_embedding)}f", *fake_embedding)

@@ -43,7 +43,11 @@ def extract_embedding(wav_bytes: bytes) -> list[float]:
         resampler = torchaudio.transforms.Resample(sample_rate, 16000)
         waveform = resampler(waveform)
 
+    # Optional: disable MKLDNN/oneDNN to avoid "could not create a primitive" on CPUs
+    # without AVX (e.g. QEMU virtual CPUs). Set VOICE_DISABLE_MKLDNN=1 in env when needed.
+    use_mkldnn = os.environ.get("VOICE_DISABLE_MKLDNN", "").strip().lower() not in ("1", "true", "yes")
     with torch.no_grad():
-        embedding = model.encode_batch(waveform)
+        with torch.backends.mkldnn.flags(enabled=use_mkldnn):
+            embedding = model.encode_batch(waveform)
 
     return embedding.squeeze().tolist()

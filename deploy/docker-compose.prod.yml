@@ -63,6 +63,11 @@ services:
   voice-service:
     image: ghcr.io/civil-whisper/collective-will-voice:latest
     restart: unless-stopped
+    environment:
+      # No-AVX / QEMU CPUs: disable MKLDNN so inference works (see deploy-failures-2025-03.md)
+      VOICE_DISABLE_MKLDNN: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s

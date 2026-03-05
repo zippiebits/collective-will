@@ -123,10 +123,11 @@ scp "$LOCAL_SECRETS" "${VPS}:${REMOTE_SECRETS}"
 ssh "$VPS" "chmod 600 ${REMOTE_SECRETS}"
 
 # Voice phrase pool (required for voice verification)
+# 644 so the backend container (runs as non-root) can read the file when mounted
 if [[ -f "$LOCAL_VOICE_PHRASES" ]]; then
   echo "==> Pushing voice-phrases.json"
   scp "$LOCAL_VOICE_PHRASES" "${VPS}:${REMOTE_VOICE_PHRASES}"
-  ssh "$VPS" "chmod 600 ${REMOTE_VOICE_PHRASES}"
+  ssh "$VPS" "chmod 644 ${REMOTE_VOICE_PHRASES}"
 else
   echo "==> Skipping voice-phrases.json (file not found; copy voice-phrases.json.example and fill to enable voice)"
 fi

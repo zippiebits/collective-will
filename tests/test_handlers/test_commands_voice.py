@@ -122,6 +122,71 @@ class TestVoiceGateNotEnrolled:
 
         assert result == "voice_enrollment_started"
 
+    @pytest.mark.asyncio
+    async def test_voice_service_failure_during_enrollment_sends_error_message(self) -> None:
+        """When voice-service fails (500, timeout, etc.), user gets voice_enroll_error not 500."""
+        state = {
+            "enrollment": True,
+            "step": 0,
+            "phrase_ids": [0, 1, 2],
+            "collected_embeddings": [],
+            "attempt": 0,
+            "failures": 0,
+            "failed_phrase_ids": [],
+        }
+        user = _make_user(enrolled=False, bot_state="enrolling_voice", bot_state_data=state)
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_voice_message()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch(
+                "src.handlers.commands.process_enrollment_audio",
+                new_callable=AsyncMock,
+                return_value=("service_error", state),
+            ),
+        ):
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_service_error"
+        channel.send_message.assert_called_once()
+        sent_text = channel.send_message.call_args[0][0].text
+        assert "Error processing audio" in sent_text or "error" in sent_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_phrases_file_unreadable_sends_error_message(self) -> None:
+        """When phrases file cannot be read (e.g. PermissionError), user gets voice_enroll_error not 500."""
+        user = _make_user(enrolled=False)
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_voice_message()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch(
+                "src.handlers.commands.start_enrollment",
+                new_callable=AsyncMock,
+                side_effect=OSError(13, "Permission denied"),
+            ),
+        ):
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_error"
+        channel.send_message.assert_called_once()
+        sent_text = channel.send_message.call_args[0][0].text
+        assert "Error processing audio" in sent_text or "error" in sent_text.lower()
+
 
 class TestVoiceGateExpiredSession:
     """User is enrolled but session expired."""

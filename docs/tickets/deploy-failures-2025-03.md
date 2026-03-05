@@ -71,6 +71,32 @@ Two distinct failure modes were observed via `gh run list` and `gh run view --lo
 
 ---
 
+## 3. Voice-service: "could not create a primitive" at request time (staging VPS)
+
+### What happened
+
+- voice-service container is **running** and `/health` passes, but **POST /process** fails with:
+  - `RuntimeError: could not create a primitive` inside PyTorch `conv1d` (SpeechBrain ECAPA-TDNN).
+- User sees "Error processing audio" from the backend.
+
+### VPS staging machine (195.246.231.210)
+
+- **CPU**: 2 vCPUs, QEMU Virtual CPU version 2.5+ (KVM), x86_64.
+- **CPU flags**: No **AVX** (only up to SSE3 / pni, cx16). Limited virtual CPU.
+- **RAM**: ~3.8 GB total, ~2.7 GB available.
+- **OS**: Linux 5.15 (Ubuntu).
+
+oneDNN/MKLDNN backends in PyTorch can fail to create primitives on CPUs without AVX or on certain virtualized CPUs; the error is backend/hardware-specific.
+
+### Fixes applied
+
+1. **Compose** (`deploy/docker-compose.prod.yml`): voice-service env `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1` to reduce thread/backend init issues.
+2. **Voice-service code** (`voice-service/app/embed.py`): run `model.encode_batch(waveform)` inside `torch.backends.mkldnn.flags(enabled=False)` so the oneDNN path is skipped; PyTorch uses the non-MKLDNN CPU path (slower but compatible with no-AVX / QEMU CPUs).
+
+After rebuilding and pushing the voice-service image and redeploying (or updating the image on staging), enrollment/verification should proceed without this runtime error.
+
+---
+
 ## References
 
 - Deploy workflow: `.github/workflows/deploy.yml` (`command_timeout: 10m`, SSH step).
