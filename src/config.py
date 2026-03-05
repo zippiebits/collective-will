@@ -50,6 +50,24 @@ class Settings(BaseSettings):
     dispute_metrics_lookback_days: int = 7
     dispute_rate_tuning_threshold: float = 0.05
     dispute_disagreement_tuning_threshold: float = 0.30
+    # Voice verification
+    voice_service_url: str = "http://voice-service:8001"
+    voice_service_timeout_seconds: float = 30.0
+    voice_http_max_retries: int = 2
+    voice_embedding_similarity_high: float = 0.50
+    voice_embedding_similarity_moderate: float = 0.35
+    voice_transcription_score_standard: float = 0.70
+    voice_transcription_score_strict: float = 0.90
+    voice_enrollment_phrases_per_session: int = 3
+    voice_enrollment_max_phrase_failures: int = 3
+    voice_enrollment_attempts_per_phrase: int = 2
+    voice_session_duration_minutes: int = 30
+    voice_verification_max_attempts: int = 4
+    voice_verification_rate_limit_count: int = 5
+    voice_verification_rate_limit_window_seconds: int = 3600
+    voice_audio_min_duration_seconds: int = 2
+    voice_audio_max_duration_seconds: int = 15
+
     ops_console_enabled: bool = False
     ops_console_show_in_nav: bool = False
     ops_console_require_admin: bool = True

@@ -40,6 +40,9 @@ class FakeChannel(BaseChannel):
         self.edited_markups.append((recipient_ref, message_id, reply_markup))
         return True
 
+    async def download_file(self, file_id: str) -> bytes:
+        return b"fake-audio"
+
 
 def _text_msg(text: str, sender_ref: str = "ref-1") -> UnifiedMessage:
     return UnifiedMessage(
@@ -127,6 +130,7 @@ async def test_route_successful_linking_sends_welcome_with_menu() -> None:
     db = AsyncMock()
 
     linked_user = _make_user(locale="en")
+    linked_user.is_voice_enrolled = False
     no_user_result = MagicMock()
     no_user_result.scalar_one_or_none.return_value = None
     linked_user_result = MagicMock()
@@ -137,18 +141,28 @@ async def test_route_successful_linking_sends_welcome_with_menu() -> None:
         "src.handlers.identity.resolve_linking_code",
         new_callable=AsyncMock,
         return_value=(True, "linked", "t***t@example.com"),
-    ):
+    ), patch(
+        "src.handlers.commands.start_enrollment",
+        new_callable=AsyncMock,
+        return_value={
+            "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+            "collected_embeddings": [], "attempt": 0, "failures": 0,
+            "failed_phrase_ids": [],
+        },
+    ), patch(
+        "src.handlers.commands.get_current_phrase",
+        return_value=(1, "The morning sun warms the river bank"),
+    ), patch(
+        "src.handlers.commands.get_settings",
+    ) as mock_settings:
+        mock_settings.return_value.voice_enrollment_phrases_per_session = 3
         status = await route_message(session=db, message=_text_msg("_TC856VsVWs", "new-ref"), channel=channel)
 
-    assert status == "account_linked"
-    assert len(channel.messages) == 1
-    text = channel.messages[0].text
-    assert "t***t@example.com" in text
-    assert "✅" in text
-    assert "Welcome to Collective Will" in text
-    markup = channel.messages[0].reply_markup
-    assert markup is not None
-    assert "inline_keyboard" in markup
+    assert status == "voice_enrollment_started"
+    welcome_text = channel.messages[0].text
+    assert "t***t@example.com" in welcome_text
+    assert "✅" in welcome_text
+    assert "Welcome to Collective Will" in welcome_text
 
 
 @pytest.mark.asyncio
@@ -157,6 +171,7 @@ async def test_route_successful_linking_sends_welcome_fa() -> None:
     db = AsyncMock()
 
     linked_user = _make_user(locale="fa")
+    linked_user.is_voice_enrolled = False
     no_user_result = MagicMock()
     no_user_result.scalar_one_or_none.return_value = None
     linked_user_result = MagicMock()
@@ -167,10 +182,24 @@ async def test_route_successful_linking_sends_welcome_fa() -> None:
         "src.handlers.identity.resolve_linking_code",
         new_callable=AsyncMock,
         return_value=(True, "linked", "t***t@example.com"),
-    ):
+    ), patch(
+        "src.handlers.commands.start_enrollment",
+        new_callable=AsyncMock,
+        return_value={
+            "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+            "collected_embeddings": [], "attempt": 0, "failures": 0,
+            "failed_phrase_ids": [],
+        },
+    ), patch(
+        "src.handlers.commands.get_current_phrase",
+        return_value=(1, "آفتاب صبحگاهی ساحل رودخانه را گرم می‌کند"),
+    ), patch(
+        "src.handlers.commands.get_settings",
+    ) as mock_settings:
+        mock_settings.return_value.voice_enrollment_phrases_per_session = 3
         status = await route_message(session=db, message=_text_msg("_TC856VsVWs", "new-ref"), channel=channel)
 
-    assert status == "account_linked"
+    assert status == "voice_enrollment_started"
     text = channel.messages[0].text
     assert "خوش آمدید" in text
 

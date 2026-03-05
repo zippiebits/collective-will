@@ -46,12 +46,13 @@ These are locked. Do not deviate.
 | **Infrastructure** | Njalla domain is registered (WHOIS privacy). Primary hosting is 1984.is VPS. Cloudflare (Free plan) is **active** as the edge proxy — DNS, CDN, DDoS protection, and Bot Fight Mode enabled. Caddy `trusted_proxies static` is configured with all Cloudflare IP ranges + `trusted_proxies_strict` to preserve real client IPs. Production domain serves a static 503 maintenance page until the production stack is deployed (staging is the active environment). Deploy pipeline includes preflight checks, pull retries with backoff, and post-deploy health gates. Origin IP is private. Operator failover playbook + standby VPS must be documented. |
 | **Web dependency security** | Next.js ≥15.5.12, React ≥19.0.1 (patched for CVE-2025-66478). No wget/curl in web runtime image. Deploy SSH timeout 10m — do not lengthen to mask anomalies. Full incident context: `docs/agent-context/security/01-nextjs-rce-cryptomining-2025-03.md`. |
 | **Telegram webhook verification** | When `TELEGRAM_WEBHOOK_SECRET` is set, the Telegram webhook endpoint verifies the `X-Telegram-Bot-Api-Secret-Token` header using `hmac.compare_digest`. The same secret must be passed to Telegram's `setWebhook` API. |
-| **Auth endpoint rate limiting** | In-process sliding-window rate limiters protect auth endpoints: `/auth/subscribe` (5/min/IP), `/auth/verify` (10/min/IP), `/auth/web-session` (5/min/IP). Disputes are limited to 3/hour/user. Implementation: `src/api/rate_limit.py`. For horizontal scaling, replace with Redis-backed counters. |
+| **Auth endpoint rate limiting** | In-process sliding-window rate limiters protect auth endpoints: `/auth/subscribe` (5/min/IP), `/auth/verify` (10/min/IP), `/auth/web-session` (5/min/IP). Disputes are limited to 3/hour/user. Voice verification is limited to 5/hour/user. Implementation: `src/api/rate_limit.py`. For horizontal scaling, replace with Redis-backed counters. |
 | **Generic auth error messages** | Auth failure responses use generic messages ("Invalid or expired verification link", "Invalid or expired session code") to prevent account enumeration. Internal error codes (e.g., `invalid_token`, `expired_token`, `user_not_found`) are not exposed to clients. |
 | **IP resolution** | `get_request_ip()` in `src/api/rate_limit.py` prefers `CF-Connecting-IP` (non-spoofable behind Cloudflare) over `X-Forwarded-For`. All auth routes use this function for IP-based rate limiting. |
 | **CORS policy** | Backend CORS allows only explicit origins (from `CORS_ALLOW_ORIGINS`), methods `GET/POST/OPTIONS`, and headers `Content-Type/Authorization`. No wildcard methods or headers. |
 | **Security headers** | Caddy sets `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on all staging responses. `Server` header is stripped. |
 | **Token consumption atomicity** | `consume_token()` in `src/db/verification_tokens.py` uses `SELECT ... FOR UPDATE` + `flush()` to prevent TOCTOU race conditions on concurrent token redemption. |
+| **Voice signature verification** | Dual verification (SpeechBrain ECAPA-TDNN 192-dim embedding + WhisperX transcription) via separate `voice-service` Docker container. Enrollment: 3 phrases from pool of 100/language → averaged embedding stored as `LargeBinary`. Verification: 1 random phrase per session start → 30-min session window extended on Submit/Vote/Endorse. Decision matrix: high sim (≥0.50) + transcription ≥0.70 → accept; moderate sim (≥0.35) + transcription ≥0.90 → accept; else reject. Evidence logs scores + phrase_id only (no biometric data). Implementation: `src/voice/`, `voice-service/`. |
 
 ### Abuse Thresholds
 
@@ -65,6 +66,7 @@ These are locked. Do not deviate.
 | Failed verification attempts | 5 per email per 24h, then 24h lockout |
 | Auth endpoint rate limits | subscribe: 5/min/IP, verify: 10/min/IP, web-session: 5/min/IP (in-process sliding window) |
 | Dispute rate limit | 3 disputes per hour per user |
+| Voice verification rate limit | 5 attempts per user per hour (enforced before inference) |
 
 ### Dispute Handling
 
@@ -235,9 +237,17 @@ locale: "fa" | "en"
 trust_score: float                     # Reserved for v1-style risk scoring unless an explicit v0 policy uses it
 contribution_count: int              # processed submissions + recorded policy endorsements
 is_anonymous: bool
-bot_state: str | None               # Current interaction state (e.g., "awaiting_submission", "voting")
-bot_state_data: dict | None         # JSONB — session data for multi-step flows (e.g., voting progress)
+bot_state: str | None               # Current interaction state (e.g., "awaiting_submission", "voting", "enrolling_voice", "awaiting_voice")
+bot_state_data: dict | None         # JSONB — session data for multi-step flows (e.g., voting progress, enrollment state)
+voice_enrolled_at: datetime | None  # When voice enrollment was completed
+voice_verified_at: datetime | None  # Last successful voice verification (session expires after 30 min)
+voice_embedding: bytes | None       # 192-dim ECAPA-TDNN float32 embedding (768 bytes BYTEA)
+voice_model_version: str | None     # SpeechBrain model version (detect embedding space mismatches)
 ```
+
+Properties:
+- `is_voice_enrolled` → True if `voice_enrolled_at` and `voice_embedding` are set
+- `is_voice_session_active` → True if `voice_verified_at` within `VOICE_SESSION_DURATION_MINUTES` (default 30)
 
 ### Submission
 
@@ -366,7 +376,7 @@ cluster_created, cluster_updated, cluster_merged, ballot_question_generated,
 policy_endorsed, policy_options_generated,
 vote_cast, cycle_opened, cycle_closed, user_verified, dispute_escalated,
 dispute_resolved, dispute_metrics_recorded, dispute_tuning_recommended,
-anchor_computed
+anchor_computed, voice_enrolled, voice_verified
 ```
 
 Removed event types (clean slate — no backward compatibility):
@@ -447,10 +457,10 @@ collective-will/
 │   ├── config.py
 │   ├── channels/
 │   │   ├── __init__.py
-│   │   ├── base.py              # Abstract channel interface
-│   │   ├── telegram.py          # Telegram Bot API client
-│   │   ├── whatsapp.py          # Evolution API client (post-MVP)
-│   │   └── types.py             # Unified message format (+ callback & reply_markup fields)
+│   │   ├── base.py              # Abstract channel interface (+ download_file abstract method)
+│   │   ├── telegram.py          # Telegram Bot API client (+ voice parsing, file download)
+│   │   ├── whatsapp.py          # Evolution API client (post-MVP; download_file stub)
+│   │   └── types.py             # Unified message format (+ callback, reply_markup, voice_file_id, voice_duration)
 │   ├── handlers/
 │   │   ├── __init__.py
 │   │   ├── intake.py            # Receives submissions
@@ -458,7 +468,7 @@ collective-will/
 │   │   ├── notifications.py     # Sends updates
 │   │   ├── identity.py          # Email magic-link, WhatsApp linking
 │   │   ├── abuse.py             # Rate limiting, quarantine
-│   │   └── commands.py          # Message command router
+│   │   └── commands.py          # Message command router (+ voice gate, enrollment/verification handlers)
 │   ├── pipeline/
 │   │   ├── __init__.py
 │   │   ├── llm.py               # LLM abstraction + router
@@ -471,6 +481,14 @@ collective-will/
 │   │   ├── summarize.py         # Cluster summaries (legacy)
 │   │   ├── options.py           # LLM-generated per-policy stance options
 │   │   └── agenda.py            # Agenda building
+│   ├── voice/
+│   │   ├── __init__.py
+│   │   ├── client.py            # VoiceServiceClient — HTTP client for voice-service
+│   │   ├── audio.py             # Audio download + duration validation
+│   │   ├── phrases.py           # 100 phrases per language (fa/en), selection
+│   │   ├── scoring.py           # Cosine similarity, decision matrix, embedding serialization
+│   │   ├── enrollment.py        # Multi-step enrollment state machine
+│   │   └── verification.py      # Session verification against stored embedding
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── user.py

@@ -839,6 +839,72 @@ When daily verifications approach 100/day:
 - Change config: `EMAIL_TRANSPORT=smtp`, set `SMTP_HOST`, `SMTP_PORT`, etc.
 - Remove `RESEND_API_KEY` — done, no code changes needed
 
+### P1 — Voice Signature Verification
+
+Design rationale: `docs/agent-context/messaging/10-voice-signature-verification-complete.md`
+
+Goal: Add voice-based identity verification after email + Telegram linking. Users enroll
+once (3 phrases from pool of 100/language) and verify at each session start (1 phrase).
+Dual verification: SpeechBrain ECAPA-TDNN embedding similarity + WhisperX transcription match.
+ML inference runs in a separate Docker service (`voice-service/`).
+
+**Phase 1 — Voice Inference Service**
+
+103. [done] Create `voice-service/` (separate FastAPI + SpeechBrain + WhisperX)
+     - `Dockerfile`, `requirements.txt`, `app/main.py` (POST /process, GET /health)
+     - `app/audio.py` (OGG Opus → 16kHz WAV), `app/embed.py` (ECAPA-TDNN 192-dim), `app/transcribe.py` (WhisperX + word-overlap)
+     - `app/schemas.py` (Pydantic request/response models)
+     - Added to `docker-compose.yml` and `deploy/docker-compose.prod.yml` with healthcheck
+
+**Phase 2 — Core Infrastructure**
+
+104. [done] Add voice settings + DB columns + migration
+     - 16 voice settings in `src/config.py` (thresholds, rate limits, session duration, audio bounds)
+     - 4 voice columns on User model: `voice_enrolled_at`, `voice_verified_at`, `voice_embedding` (LargeBinary), `voice_model_version`
+     - 2 computed properties: `is_voice_enrolled`, `is_voice_session_active`
+     - Migration `004_voice_verification`
+     - `voice_enrolled`, `voice_verified` added to `VALID_EVENT_TYPES`
+     - Voice verification rate limiter in `src/api/rate_limit.py` (5/hour/user)
+     - `voice_file_id`, `voice_duration` on `UnifiedMessage`
+     - `download_file()` abstract method on `BaseChannel`, implemented in TelegramChannel
+
+**Phase 3 — Voice Module**
+
+105. [done] Create `src/voice/` module
+     - `client.py`: `VoiceServiceClient` HTTP client with retry
+     - `audio.py`: `download_and_validate_audio()` with duration pre-check
+     - `phrases.py`: 100 EN + 100 FA phrases, `select_phrases()`, `get_phrase()`
+     - `scoring.py`: `cosine_similarity()`, `voice_decision()` (decision matrix), embedding serialize/deserialize
+     - `enrollment.py`: multi-step state machine (init → process → finalize), state in `bot_state_data`
+     - `verification.py`: `verify_voice()` with dual check, evidence logging, session grant
+
+**Phase 4 — Handler Integration**
+
+106. [done] Wire voice gate into `route_message()`
+     - Voice gate: voice msg → handler; not enrolled → enrollment; expired session → verification
+     - New bot_states: `enrolling_voice`, `awaiting_voice_verification`
+     - Session extension on Submit, Vote, Endorse (updates `voice_verified_at`)
+     - Auto-start enrollment after account linking
+     - 15+ i18n message keys per language (FA + EN) for enrollment/verification prompts
+
+**Phase 5 — Tests**
+
+107. [done] Voice test suite (59 tests)
+     - `tests/test_voice/test_scoring.py` (14 tests): decision matrix, cosine sim, embedding round-trip
+     - `tests/test_voice/test_phrases.py` (11 tests): pool sizes, selection, exclusion
+     - `tests/test_voice/test_client.py` (4 tests): HTTP mock, retry
+     - `tests/test_voice/test_enrollment.py` (7 tests): state machine, finalization
+     - `tests/test_voice/test_verification.py` (6 tests): accept/reject, evidence
+     - `tests/test_channels/test_telegram_voice.py` (4 tests): voice parsing, download
+     - `tests/test_handlers/test_commands_voice.py` (5 tests): voice gate, rate limiting
+
+108. [done] Context documentation updates
+     - Updated `CONTEXT-shared.md`: User model, event types, directory structure, frozen decisions, abuse thresholds
+     - Updated `01-channel-base-types.md`: `download_file`, voice fields on UnifiedMessage
+     - Updated `08-message-commands.md`: voice gate in route_message, voice bot_states
+     - Updated `CLAUDE.md`: voice module in key source paths
+     - Updated `ACTIVE-action-plan.md`: this workstream
+
 ## Definition of Done (This Cycle)
 
 - No CI/CD job performs paid LLM API calls

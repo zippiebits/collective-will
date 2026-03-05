@@ -36,6 +36,8 @@ VALID_EVENT_TYPES = {
     "dispute_tuning_recommended",
     "anchor_computed",
     "policy_options_generated",
+    "voice_enrolled",
+    "voice_verified",
 }
 
 

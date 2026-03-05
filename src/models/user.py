@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Boolean, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -41,9 +41,29 @@ class User(Base):
     bot_state: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     bot_state_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
 
+    # Voice verification
+    voice_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voice_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voice_embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    voice_model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     submissions: Mapped[list[Submission]] = relationship(back_populates="user")
     votes: Mapped[list[Vote]] = relationship(back_populates="user")
     endorsements: Mapped[list[PolicyEndorsement]] = relationship(back_populates="user")
+
+    @property
+    def is_voice_enrolled(self) -> bool:
+        return self.voice_enrolled_at is not None and self.voice_embedding is not None
+
+    @property
+    def is_voice_session_active(self) -> bool:
+        if self.voice_verified_at is None:
+            return False
+        from src.config import get_settings
+        settings = get_settings()
+        from datetime import timedelta
+        expiry = self.voice_verified_at + timedelta(minutes=settings.voice_session_duration_minutes)
+        return datetime.now(UTC) < expiry
 
     def to_schema(self) -> UserRead:
         return UserRead.from_orm_model(self)

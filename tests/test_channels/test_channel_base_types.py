@@ -21,6 +21,9 @@ class FakeChannel(BaseChannel):
         self.sent.append(message)
         return True
 
+    async def download_file(self, file_id: str) -> bytes:
+        return b"fake-audio"
+
 
 def test_unified_message_validates_correct_input() -> None:
     msg = UnifiedMessage(sender_ref="abc", text="hello", message_id="msg-1")

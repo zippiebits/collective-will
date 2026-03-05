@@ -31,6 +31,8 @@ class FakeChannel(BaseChannel):
         self.sent.append(message)
         return True
 
+    async def download_file(self, file_id: str) -> bytes:
+        return b"fake-audio"
 
 
 def _make_user(

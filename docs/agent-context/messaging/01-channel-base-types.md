@@ -28,6 +28,8 @@ class UnifiedMessage(BaseModel):
     raw_payload: dict | None = None
     callback_data: str | None = None        # Inline keyboard callback payload
     callback_query_id: str | None = None    # Platform callback query ID (for acknowledgement)
+    voice_file_id: str | None = None        # Platform file ID for voice messages
+    voice_duration: int | None = None       # Duration of voice message in seconds
 
 class OutboundMessage(BaseModel):
     """Message to send to a user."""
@@ -68,6 +70,12 @@ class BaseChannel(ABC):
         """Edit the inline keyboard on an existing message. Platforms without
         inline keyboard support return False by default."""
         return False
+
+    @abstractmethod
+    async def download_file(self, file_id: str) -> bytes:
+        """Download a file by its platform-specific ID. Returns raw bytes.
+        Used for voice message audio download during enrollment/verification."""
+        ...
 ```
 
 Note: `send_ballot()` has been removed from the base interface. Ballot rendering is now handled by `commands.py` using `send_message()` with `reply_markup` inline keyboards.
@@ -80,6 +88,7 @@ Note: `send_ballot()` has been removed from the base interface. Ballot rendering
 - `send_message()`: Sends via Telegram `sendMessage` API, passing `reply_markup` as the inline keyboard when present.
 - `answer_callback()`: Calls `answerCallbackQuery` to dismiss the loading indicator on the client.
 - `edit_message_markup()`: Calls `editMessageReplyMarkup` to update inline keyboards on existing messages.
+- `download_file()`: Calls Telegram `getFile` API → downloads from CDN → returns raw bytes. Used for voice enrollment/verification audio.
 
 ## Constraints
 
@@ -88,6 +97,7 @@ Note: `send_ballot()` has been removed from the base interface. Ballot rendering
 - `parse_webhook` returns `None` for non-message payloads (delivery receipts, status updates, etc.).
 - `callback_data` and `callback_query_id` are only populated for inline keyboard callback events.
 - `answer_callback()` and `edit_message_markup()` have concrete default implementations (return `False`) so platforms without interactive keyboard support don't need to override them.
+- `download_file()` is abstract — all channels must implement it. `WhatsAppChannel` raises `NotImplementedError` (post-MVP).
 - Downstream handlers and routers must depend on `BaseChannel` + `UnifiedMessage`, not on concrete channel types.
 
 ## Tests
@@ -102,3 +112,5 @@ Tests in `tests/test_channels/test_types.py` and `tests/test_channels/test_teleg
 - TelegramChannel `parse_webhook` handles both text messages and callback queries
 - TelegramChannel `send_message` passes reply_markup to Telegram API
 - TelegramChannel `answer_callback` calls answerCallbackQuery
+- TelegramChannel `download_file` retrieves voice audio via Telegram API
+- TelegramChannel `parse_webhook` handles voice messages (populates `voice_file_id`, `voice_duration`)

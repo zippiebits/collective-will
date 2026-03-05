@@ -52,6 +52,9 @@ class WhatsAppChannel(BaseChannel):
             raw_payload=payload,
         )
 
+    async def download_file(self, file_id: str) -> bytes:
+        raise NotImplementedError("WhatsApp file download is not yet implemented (post-MVP)")
+
     async def send_message(self, message: OutboundMessage) -> bool:
         wa_id = await get_platform_id_by_ref(self._session, message.recipient_ref)
         if wa_id is None:

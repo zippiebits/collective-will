@@ -42,6 +42,10 @@ User interaction state is tracked via two columns on the `User` model:
 |---|---|---|
 | `None` (default) | Any text | Show menu hint + main menu keyboard |
 | `None` | Callback `submit` | Set state to `awaiting_submission`, prompt user to type concern |
+| `enrolling_voice` | Voice message | Process enrollment audio (multi-step: 3 phrases) |
+| `enrolling_voice` | Text | Nudge: "Please send a voice message" |
+| `awaiting_voice` | Voice message | Verify against stored embedding |
+| `awaiting_voice` | Text | Nudge: "Please send a voice message" |
 | `awaiting_submission` | Any text | Route to `handle_submission()`, clear state, show menu |
 | `None` | Callback `vote` | Initialize voting session (see below) |
 | `voting` | Callbacks `vo:N`, `vsk`, `vbk`, `vchg`, `vsub` | Navigate per-policy voting flow |
@@ -140,10 +144,15 @@ async def route_message(
 
 1. If `callback_data` present → look up user, dispatch to `_route_callback()`
 2. Else look up user by `sender_ref`
-3. If user not found and text matches linking code → handle linking
+3. If user not found and text matches linking code → handle linking (then auto-start voice enrollment)
 4. If user not found → send bilingual registration prompt
-5. If `bot_state == "awaiting_submission"` → route to `handle_submission()`
-6. Else → show menu hint with keyboard
+5. **Voice gate** (after user lookup, before action dispatch):
+   a. Voice message → `_handle_voice_message()` (routes to enrollment or verification handler)
+   b. Not voice-enrolled → prompt enrollment (send voice to start)
+   c. Enrolled but session expired → prompt verification (send voice)
+   d. Text during `"enrolling_voice"` or `"awaiting_voice"` → resend voice prompt (nudge)
+6. If `bot_state == "awaiting_submission"` → route to `handle_submission()`
+7. Else → show menu hint with keyboard
 
 Returns a status string for logging/testing (e.g., `"policy_shown"`, `"vote_recorded"`, `"menu_resent"`).
 
@@ -188,3 +197,10 @@ Tests in `tests/test_handlers/test_commands.py` covering:
 - Last policy option select → auto-submits vote, shows summary + confirmation
 - Unrecognized text → re-sends menu
 - Bilingual message content verification
+
+Additional voice-related tests in `tests/test_handlers/test_commands_voice.py`:
+- Not-enrolled user text → enrollment prompt
+- Not-enrolled user voice → starts enrollment
+- Enrolled + expired session text → verification prompt
+- Enrolled + active session text → passes through to menu
+- Rate-limited verification → rate limit message

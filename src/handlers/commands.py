@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.api.rate_limit import check_voice_rate_limit
 from src.channels.base import BaseChannel
 from src.channels.types import OutboundMessage, UnifiedMessage
 from src.config import get_settings
@@ -19,6 +20,13 @@ from src.models.cluster import Cluster
 from src.models.policy_option import PolicyOption
 from src.models.user import User
 from src.models.vote import VotingCycle
+from src.voice.enrollment import (
+    finalize_enrollment,
+    get_current_phrase,
+    process_enrollment_audio,
+    start_enrollment,
+)
+from src.voice.verification import pick_verification_phrase, verify_voice
 
 # ---------------------------------------------------------------------------
 # Pre-auth messages (bilingual — user locale unknown)
@@ -99,6 +107,33 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_policy_header": "✍️ سیاست {n} از {total}:",
         "endorse_complete": "✅ همه سیاست‌ها بررسی شدند!",
         "cycle_timing": "🗳️ رای‌گیری فعال — {policies} سیاست\n⏰ پایان: {ends_at}\n",
+        # Voice enrollment
+        "voice_enroll_intro": (
+            "🎤 برای تأیید هویت صوتی، لطفاً عبارت زیر را با صدای بلند بخوانید و ضبط صوتی ارسال کنید:\n\n"
+            "«{phrase}»\n\n"
+            "(عبارت {step} از {total})"
+        ),
+        "voice_enroll_accepted": (
+            "✅ عبارت پذیرفته شد! لطفاً عبارت بعدی را بخوانید:\n\n"
+            "«{phrase}»\n\n(عبارت {step} از {total})"
+        ),
+        "voice_enroll_retry": (
+            "❌ متوجه نشدیم. لطفاً دوباره عبارت را بخوانید:\n\n"
+            "«{phrase}»\n\n(تلاش {attempt} از {max_attempts})"
+        ),
+        "voice_enroll_replaced": "عبارت جدید:\n\n«{phrase}»\n\nلطفاً این عبارت را بخوانید.",
+        "voice_enroll_complete": "✅ ثبت صوتی شما با موفقیت انجام شد!",
+        "voice_enroll_blocked": "❌ تلاش‌های زیادی ناموفق بود. لطفاً فردا دوباره امتحان کنید.",
+        "voice_enroll_error": "⚠️ خطا در پردازش صدا. لطفاً دوباره تلاش کنید.",
+        "voice_enroll_needed": "🎤 لطفاً ابتدا هویت صوتی خود را ثبت کنید. یک پیام صوتی ارسال کنید.",
+        # Voice verification
+        "voice_verify_prompt": "🔒 لطفاً برای تأیید هویت، عبارت زیر را بخوانید:\n\n«{phrase}»",
+        "voice_verify_success": "✅ هویت شما تأیید شد!",
+        "voice_verify_failed": "❌ تأیید صوتی ناموفق بود. لطفاً دوباره تلاش کنید.",
+        "voice_verify_rate_limited": "⚠️ تعداد تلاش‌های مجاز شما تمام شده. لطفاً بعداً دوباره امتحان کنید.",
+        "voice_verify_nudge": "🔒 لطفاً یک پیام صوتی ارسال کنید تا هویت شما تأیید شود.",
+        "voice_audio_too_short": "⚠️ پیام صوتی خیلی کوتاه است. لطفاً حداقل ۲ ثانیه ضبط کنید.",
+        "voice_audio_too_long": "⚠️ پیام صوتی خیلی طولانی است. لطفاً حداکثر ۱۵ ثانیه ضبط کنید.",
     },
     "en": {
         "submission_prompt": "📝 Please type your concern or policy proposal:",
@@ -133,6 +168,33 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_policy_header": "✍️ Policy {n} of {total}:",
         "endorse_complete": "✅ All policies reviewed!",
         "cycle_timing": "🗳️ Active vote — {policies} policies\n⏰ Ends: {ends_at}\n",
+        # Voice enrollment
+        "voice_enroll_intro": (
+            "🎤 For voice identity verification, please read the following phrase aloud and send a voice message:\n\n"
+            "\"{phrase}\"\n\n"
+            "(Phrase {step} of {total})"
+        ),
+        "voice_enroll_accepted": (
+            "✅ Phrase accepted! Please read the next phrase:\n\n"
+            "\"{phrase}\"\n\n(Phrase {step} of {total})"
+        ),
+        "voice_enroll_retry": (
+            "❌ We couldn't understand. Please read the phrase again:\n\n"
+            "\"{phrase}\"\n\n(Attempt {attempt} of {max_attempts})"
+        ),
+        "voice_enroll_replaced": "New phrase:\n\n\"{phrase}\"\n\nPlease read this phrase.",
+        "voice_enroll_complete": "✅ Your voice enrollment is complete!",
+        "voice_enroll_blocked": "❌ Too many failed attempts. Please try again tomorrow.",
+        "voice_enroll_error": "⚠️ Error processing audio. Please try again.",
+        "voice_enroll_needed": "🎤 Please complete voice enrollment first. Send a voice message.",
+        # Voice verification
+        "voice_verify_prompt": "🔒 To verify your identity, please read the following phrase:\n\n\"{phrase}\"",
+        "voice_verify_success": "✅ Your identity has been verified!",
+        "voice_verify_failed": "❌ Voice verification failed. Please try again.",
+        "voice_verify_rate_limited": "⚠️ Too many attempts. Please try again later.",
+        "voice_verify_nudge": "🔒 Please send a voice message to verify your identity.",
+        "voice_audio_too_short": "⚠️ Voice message too short. Please record at least 2 seconds.",
+        "voice_audio_too_long": "⚠️ Voice message too long. Please keep it under 15 seconds.",
     },
 }
 
@@ -479,6 +541,11 @@ async def _show_vote_summary(
         ))
         await _send_main_menu(locale, message.sender_ref, channel)
         return status
+
+    # Extend voice session on successful vote
+    if user.is_voice_enrolled:
+        user.voice_verified_at = datetime.now(UTC)
+        await db.commit()
 
     base_url = settings.app_public_base_url
     analytics_url = f"{base_url}/{locale}/collective-concerns/community-votes"
@@ -874,6 +941,9 @@ async def _handle_endorse(
     cluster_id = UUID(cluster_ids[index - 1])
     ok, status = await record_endorsement(session=db, user=user, cluster_id=cluster_id)
     if ok:
+        # Extend voice session on successful endorsement
+        if user.is_voice_enrolled:
+            user.voice_verified_at = datetime.now(UTC)
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,
             text=_msg(user.locale, "endorsement_recorded"),
@@ -918,6 +988,219 @@ async def _handle_endorse_back(
         await db.commit()
 
     return await _show_endorsement_policy(user, message, channel, db, session_data)
+
+
+# ---------------------------------------------------------------------------
+# Voice enrollment / verification handlers
+# ---------------------------------------------------------------------------
+
+async def _start_voice_enrollment(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Initialize voice enrollment and send first phrase prompt."""
+    settings = get_settings()
+    state = await start_enrollment(user)
+    _, phrase_text = get_current_phrase(state, user.locale)
+
+    user.bot_state = "enrolling_voice"
+    user.bot_state_data = state
+    await db.commit()
+
+    await channel.send_message(OutboundMessage(
+        recipient_ref=message.sender_ref,
+        text=_msg(
+            user.locale, "voice_enroll_intro",
+            phrase=phrase_text,
+            step=1,
+            total=settings.voice_enrollment_phrases_per_session,
+        ),
+    ))
+    return "voice_enrollment_started"
+
+
+async def _handle_enrollment_voice(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Process a voice message during enrollment."""
+    settings = get_settings()
+    state = copy.deepcopy(user.bot_state_data or {})
+
+    if not state.get("enrollment"):
+        return await _start_voice_enrollment(user, message, channel, db)
+
+    status, updated_state = await process_enrollment_audio(
+        user=user,
+        state=state,
+        channel=channel,
+        file_id=message.voice_file_id or "",
+        duration=message.voice_duration,
+        session=db,
+    )
+
+    locale = user.locale
+
+    if status == "enrollment_complete":
+        await finalize_enrollment(user, updated_state, db)
+        user.bot_state = None
+        user.bot_state_data = None
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(locale, "voice_enroll_complete"),
+        ))
+        await _send_main_menu(locale, message.sender_ref, channel)
+        return "voice_enrolled"
+
+    if status == "phrase_accepted":
+        _, phrase_text = get_current_phrase(updated_state, locale)
+        user.bot_state_data = updated_state
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(
+                locale, "voice_enroll_accepted",
+                phrase=phrase_text,
+                step=updated_state["step"] + 1,
+                total=len(updated_state["phrase_ids"]),
+            ),
+        ))
+        return "voice_phrase_accepted"
+
+    if status == "phrase_retry":
+        _, phrase_text = get_current_phrase(updated_state, locale)
+        user.bot_state_data = updated_state
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(
+                locale, "voice_enroll_retry",
+                phrase=phrase_text,
+                attempt=updated_state["attempt"] + 1,
+                max_attempts=settings.voice_enrollment_attempts_per_phrase,
+            ),
+        ))
+        return "voice_phrase_retry"
+
+    if status == "phrase_replaced":
+        _, phrase_text = get_current_phrase(updated_state, locale)
+        user.bot_state_data = updated_state
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(locale, "voice_enroll_replaced", phrase=phrase_text),
+        ))
+        return "voice_phrase_replaced"
+
+    if status == "enrollment_blocked":
+        user.bot_state = None
+        user.bot_state_data = None
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(locale, "voice_enroll_blocked"),
+        ))
+        return "voice_enrollment_blocked"
+
+    # audio_error or service_error
+    user.bot_state_data = updated_state
+    await db.commit()
+    await channel.send_message(OutboundMessage(
+        recipient_ref=message.sender_ref,
+        text=_msg(locale, "voice_enroll_error"),
+    ))
+    return f"voice_{status}"
+
+
+async def _start_voice_verification(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Send a verification phrase prompt and set bot_state."""
+    if not check_voice_rate_limit(str(user.id)):
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_verify_rate_limited"),
+        ))
+        return "voice_rate_limited"
+
+    phrase_id, phrase_text = pick_verification_phrase(user.locale)
+    user.bot_state = "awaiting_voice"
+    user.bot_state_data = {"verification": True, "phrase_id": phrase_id}
+    await db.commit()
+
+    await channel.send_message(OutboundMessage(
+        recipient_ref=message.sender_ref,
+        text=_msg(user.locale, "voice_verify_prompt", phrase=phrase_text),
+    ))
+    return "voice_verification_prompted"
+
+
+async def _handle_verification_voice(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Process a voice message during verification."""
+    state = user.bot_state_data or {}
+    phrase_id = state.get("phrase_id")
+    if phrase_id is None:
+        return await _start_voice_verification(user, message, channel, db)
+
+    if not check_voice_rate_limit(str(user.id)):
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_verify_rate_limited"),
+        ))
+        return "voice_rate_limited"
+
+    result = await verify_voice(
+        user=user,
+        channel=channel,
+        file_id=message.voice_file_id or "",
+        duration=message.voice_duration,
+        phrase_id=phrase_id,
+        session=db,
+    )
+
+    if result == "accept":
+        user.bot_state = None
+        user.bot_state_data = None
+        await db.commit()
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_verify_success"),
+        ))
+        await _send_main_menu(user.locale, message.sender_ref, channel)
+        return "voice_verified"
+
+    if result in ("audio_error", "service_error"):
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_enroll_error"),
+        ))
+        return f"voice_{result}"
+
+    # reject — give new phrase for retry
+    return await _start_voice_verification(user, message, channel, db)
+
+
+async def _handle_voice_message(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Route voice message to enrollment or verification handler."""
+    if user.bot_state == "enrolling_voice":
+        return await _handle_enrollment_voice(user, message, channel, db)
+    if user.bot_state == "awaiting_voice":
+        return await _handle_verification_voice(user, message, channel, db)
+
+    # Voice message when not in a voice state:
+    # If not enrolled → start enrollment
+    if not user.is_voice_enrolled:
+        return await _start_voice_enrollment(user, message, channel, db)
+    # If enrolled but session expired → start verification
+    if not user.is_voice_session_active:
+        return await _handle_verification_voice(user, message, channel, db)
+
+    # Voice message when everything is fine — just ignore and show menu
+    await _send_main_menu(user.locale, message.sender_ref, channel)
+    return "voice_ignored"
 
 
 async def _handle_cancel(
@@ -1010,8 +1293,10 @@ async def route_message(
             await channel.send_message(OutboundMessage(
                 recipient_ref=message.sender_ref,
                 text=text,
-                reply_markup=_main_menu_markup(locale),
             ))
+            # After linking, start voice enrollment
+            if linked_user is not None:
+                return await _start_voice_enrollment(linked_user, message, channel, session)
             return "account_linked"
         if status == "user_already_linked":
             await channel.send_message(OutboundMessage(
@@ -1030,10 +1315,47 @@ async def route_message(
         ))
         return "registration_prompted"
 
+    # --- Voice gate ---
+
+    # 1. Voice message → route to voice handler
+    if message.voice_file_id is not None:
+        return await _handle_voice_message(user, message, channel, session)
+
+    # 2. Not enrolled → prompt for voice enrollment
+    if not user.is_voice_enrolled:
+        if user.bot_state != "enrolling_voice":
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_enroll_needed"),
+            ))
+            return "voice_enrollment_needed"
+        # Text during enrollment — nudge to send voice
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_enroll_needed"),
+        ))
+        return "voice_enrollment_nudge"
+
+    # 3. Enrolled but session expired → prompt for verification
+    if not user.is_voice_session_active:
+        if user.bot_state == "awaiting_voice":
+            # Text during verification — nudge
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_verify_nudge"),
+            ))
+            return "voice_verification_nudge"
+        return await _start_voice_verification(user, message, channel, session)
+
+    # --- End voice gate --- (session is active, proceed normally)
+
+    # Extend voice session on meaningful actions
     if user.bot_state == "awaiting_submission":
         user.bot_state = None
         await session.commit()
         await handle_submission(message, user, channel, session)
+        user.voice_verified_at = datetime.now(UTC)
+        await session.commit()
         await _send_main_menu(user.locale, message.sender_ref, channel)
         return "submission_received"
 

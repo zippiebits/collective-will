@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class TelegramChannel(BaseChannel):
     def __init__(self, bot_token: str, session: AsyncSession, timeout_seconds: float | None = None) -> None:
         settings = get_settings()
+        self._bot_token = bot_token
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
         self.client = httpx.AsyncClient(timeout=timeout_seconds or settings.telegram_http_timeout_seconds)
         self._session = session
@@ -31,10 +32,6 @@ class TelegramChannel(BaseChannel):
         if message is None:
             return None
 
-        text = message.get("text")
-        if not text:
-            return None
-
         chat = message.get("chat", {})
         chat_id = str(chat.get("id", ""))
         if not chat_id:
@@ -44,6 +41,24 @@ class TelegramChannel(BaseChannel):
         message_id = str(message.get("message_id", ""))
         date_ts = message.get("date")
         timestamp = datetime.fromtimestamp(int(date_ts), tz=UTC) if date_ts else datetime.now(UTC)
+
+        # Handle voice messages
+        voice = message.get("voice")
+        if voice is not None:
+            return UnifiedMessage(
+                sender_ref=sender_ref,
+                text="",
+                platform="telegram",
+                timestamp=timestamp,
+                message_id=message_id,
+                raw_payload=payload,
+                voice_file_id=voice.get("file_id"),
+                voice_duration=voice.get("duration"),
+            )
+
+        text = message.get("text")
+        if not text:
+            return None
 
         return UnifiedMessage(
             sender_ref=sender_ref,
@@ -107,6 +122,23 @@ class TelegramChannel(BaseChannel):
         except (httpx.HTTPStatusError, httpx.RequestError):
             logger.exception("Failed to answer callback query %s", callback_query_id)
             return False
+
+    async def download_file(self, file_id: str) -> bytes:
+        """Download a file from Telegram CDN by file_id."""
+        # Step 1: Get file path from Telegram API
+        url = f"{self.api_url}/getFile"
+        response = await self.client.post(url, json={"file_id": file_id})
+        response.raise_for_status()
+        data = response.json()
+        file_path = data.get("result", {}).get("file_path")
+        if not file_path:
+            raise ValueError(f"No file_path returned for file_id {file_id}")
+
+        # Step 2: Download from Telegram CDN
+        download_url = f"https://api.telegram.org/file/bot{self._bot_token}/{file_path}"
+        dl_response = await self.client.get(download_url)
+        dl_response.raise_for_status()
+        return dl_response.content
 
     async def edit_message_markup(
         self, recipient_ref: str, message_id: str, reply_markup: dict[str, Any]

@@ -17,6 +17,8 @@ class UnifiedMessage(BaseModel):
     raw_payload: dict[str, Any] | None = None
     callback_data: str | None = None
     callback_query_id: str | None = None
+    voice_file_id: str | None = None
+    voice_duration: int | None = None
 
 
 class OutboundMessage(BaseModel):

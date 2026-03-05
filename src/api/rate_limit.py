@@ -82,3 +82,12 @@ def enforce_subscribe_rate_limit(request: Request) -> None:
 def enforce_dispute_rate_limit(user_id: str) -> None:
     if not _dispute_limiter.check(user_id):
         raise HTTPException(status_code=429, detail="rate_limit_exceeded")
+
+
+# Voice verification rate limiter (per user_id)
+_voice_verify_limiter = _SlidingWindowCounter(max_requests=5, window_seconds=3600)
+
+
+def check_voice_rate_limit(user_id: str) -> bool:
+    """Return True if voice verification attempt is allowed, False if rate-limited."""
+    return _voice_verify_limiter.check(user_id)

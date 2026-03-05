@@ -111,7 +111,14 @@ The full system flow is documented in `docs/architecture-flow.md`. The short ver
 | `src/api/main.py` | FastAPI app entry point |
 | `src/api/routes/` | REST endpoints: analytics, user, auth, webhooks |
 | `src/api/rate_limit.py` | In-process sliding-window rate limiters + `get_request_ip()` (CF-Connecting-IP preferred) |
-| `src/channels/base.py` | `BaseChannel` ABC — platform-agnostic interface |
+| `src/channels/base.py` | `BaseChannel` ABC — platform-agnostic interface (includes `download_file` for voice) |
+| `src/voice/` | Voice verification module: enrollment, verification, scoring, phrases, client |
+| `src/voice/scoring.py` | Cosine similarity, decision matrix, embedding serialize/deserialize |
+| `src/voice/enrollment.py` | Multi-step enrollment state machine (3 phrases → averaged embedding) |
+| `src/voice/verification.py` | Session verification: dual check (embedding + transcription) |
+| `src/voice/phrases.py` | 100 phrases per language (EN/FA), random selection |
+| `src/voice/client.py` | HTTP client for voice-service (base64 encode, retry) |
+| `voice-service/` | Separate FastAPI service: SpeechBrain ECAPA-TDNN + WhisperX inference |
 | `src/scheduler/main.py` | `run_pipeline()` — full batch pipeline orchestration |
 | `web/lib/api.ts` | Auto-selects `BACKEND_API_BASE_URL` (server) vs `NEXT_PUBLIC_API_BASE_URL` (browser) |
 | `web/app/` | Next.js App Router pages |
@@ -169,3 +176,44 @@ When implementing anything, read in this order:
 4. `docs/mvp-specification.md` — product context
 
 Active implementation priorities: `docs/agent-context/ACTIVE-action-plan.md`.
+
+## Workflow Rules (from .cursor/rules)
+
+### CI Before Commit
+Before committing and pushing, run `scripts/ci-backend.sh` for backend changes and `scripts/ci-web.sh` for web changes. Run both unless the change is clearly scoped to only one side. Fix any failures before committing.
+
+### Post-Implementation Context Update
+After completing any task that changes behavior, models, APIs, or flow:
+1. Update affected `docs/agent-context/**` files (implementation contracts: models, signatures, flow, constraints, test inventories).
+2. Update `docs/decision-rationale/**` if the *why* or guardrails changed.
+3. Update `docs/agent-context/CONTEXT-shared.md` if data models, event types, directory structure, or frozen decisions changed.
+4. Update `docs/agent-context/ACTIVE-action-plan.md` — mark completed items, add discovered work.
+Context drift between code and docs causes future agents to make incorrect assumptions. Treat context updates as part of the task, not a follow-up.
+
+### Context Governance Loop
+When a discussion creates a stable, reusable project decision (not a one-off task):
+- Promote it to durable sources following documentation precedence order.
+- Keep `docs/agent-context/**` as implementation contracts and `docs/decision-rationale/**` as rationale/guardrails.
+- Keep `AGENTS.md` aligned when shared constraints or hard requirements change.
+- Avoid churn: only persist confirmed direction, not temporary or speculative decisions.
+
+### Context Documentation Sync
+- Keep `docs/agent-context/**` focused on implementation contracts.
+- Keep `docs/decision-rationale/**` focused on why and guardrails.
+- Avoid introducing contradictions across `AGENTS.md`, context docs, and decision docs.
+
+### Python Delivery Discipline
+- Add or update tests for each implemented task.
+- Keep business logic model-agnostic; route LLM selection through configuration.
+- Never include secrets, personal identities, or raw sensitive identifiers in code or fixtures.
+
+### Infra and Migration Guardrails
+When changing infrastructure or schema migration files:
+- Preserve append-only evidence logging and hash-chain compatibility.
+- Keep sensitive identifier boundaries intact (no raw external IDs in core tables).
+- Keep schema changes backward-safe for rolling deployments when possible.
+- Document rationale in `docs/decision-rationale/**` when a migration changes architecture assumptions.
+- Keep environment-specific values in config/secrets, not hardcoded in migration or compose files.
+
+### Emergent Rule Capture
+While working, watch for repeating patterns (same fix in multiple places, manual steps repeated, corrective loops, recurring structural choices). When a pattern repeats at least twice and is not already covered by an existing rule: surface it to the user and, on confirmation, capture it as a new rule in `.cursor/rules/` (or add to this file).

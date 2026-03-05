@@ -31,3 +31,8 @@ class BaseChannel(ABC):
         """Edit the inline keyboard on an existing message. Platforms without
         inline keyboard support return False by default."""
         return False
+
+    @abstractmethod
+    async def download_file(self, file_id: str) -> bytes:
+        """Download a file by its platform-specific ID. Returns raw bytes."""
+        ...

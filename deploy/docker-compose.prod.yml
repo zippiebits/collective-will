@@ -58,6 +58,18 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  voice-service:
+    image: ghcr.io/civil-whisper/collective-will-voice:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    volumes:
+      - voice-models:/app/models
+
   web:
     image: ghcr.io/civil-whisper/collective-will-web:latest
     restart: unless-stopped
@@ -74,3 +86,4 @@ services:
 
 volumes:
   pgdata:
+  voice-models:
