@@ -17,9 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.channels.base import BaseChannel
 from src.config import get_settings
 from src.db.evidence import append_evidence
+from src.models.enrollment_audio import EnrollmentAudio
 from src.models.user import User
 from src.voice.audio import AudioValidationError, download_and_validate_audio
-from src.voice.client import VoiceServiceClient
+from src.voice.client import VoiceCloudClient
 from src.voice.phrases import get_phrase, select_phrases
 from src.voice.scoring import average_embeddings, serialize_embedding
 
@@ -95,7 +96,7 @@ async def process_enrollment_audio(
         return "audio_error", state
 
     # Call voice service
-    client = VoiceServiceClient()
+    client = VoiceCloudClient()
     try:
         phrase_id, phrase_text = get_current_phrase(state, locale)
         result = await client.process_audio(audio_bytes, phrase_text, language=locale)
@@ -105,18 +106,17 @@ async def process_enrollment_audio(
 
     # During enrollment, we only check transcription match (no stored embedding yet)
     # Use strict threshold so we only accept high-confidence readings → better-quality signature
-    locale_lower = (locale or "en").strip().lower()
-    trans_strict = (
-        settings.voice_transcription_score_strict_fa
-        if locale_lower == "fa"
-        else settings.voice_transcription_score_strict
-    )
+    trans_strict = settings.voice_transcription_score_strict
     if result.transcription_score >= trans_strict:
-        # Phrase accepted — store embedding
+        # Phrase accepted — store embedding and audio
         emb_b64 = base64.b64encode(
             bytes(struct.pack(f"<{len(result.embedding)}f", *result.embedding))
         ).decode("ascii")
         state["collected_embeddings"].append(emb_b64)
+        # Store raw audio for model portability (base64 in state, persisted on finalize)
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        state.setdefault("collected_audio", []).append(audio_b64)
+        state["model_version"] = result.model_version
         state["attempt"] = 0
         state["step"] += 1
 
@@ -181,7 +181,16 @@ async def finalize_enrollment(
     user.voice_embedding = serialize_embedding(avg)
     user.voice_enrolled_at = datetime.now(UTC)
     user.voice_verified_at = datetime.now(UTC)
-    user.voice_model_version = "speechbrain/spkrec-ecapa-voxceleb"
+    user.voice_model_version = state.get("model_version", "Jenthe/ECAPA2")
+
+    # Persist raw enrollment audio for model portability
+    for i, audio_b64 in enumerate(state.get("collected_audio", [])):
+        phrase_id = state["phrase_ids"][i] if i < len(state["phrase_ids"]) else 0
+        session.add(EnrollmentAudio(
+            user_id=user.id,
+            phrase_id=phrase_id,
+            audio_ogg=base64.b64decode(audio_b64),
+        ))
 
     await append_evidence(
         session=session,

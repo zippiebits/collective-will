@@ -52,7 +52,7 @@ These are locked. Do not deviate.
 | **CORS policy** | Backend CORS allows only explicit origins (from `CORS_ALLOW_ORIGINS`), methods `GET/POST/OPTIONS`, and headers `Content-Type/Authorization`. No wildcard methods or headers. |
 | **Security headers** | Caddy sets `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on all staging responses. `Server` header is stripped. |
 | **Token consumption atomicity** | `consume_token()` in `src/db/verification_tokens.py` uses `SELECT ... FOR UPDATE` + `flush()` to prevent TOCTOU race conditions on concurrent token redemption. |
-| **Voice signature verification** | Dual verification (SpeechBrain ECAPA-TDNN 192-dim embedding + faster-whisper transcription) via separate `voice-service` Docker container. Enrollment: 3 phrases from pool of 100/language → averaged embedding stored as `LargeBinary`. Verification: 1 random phrase per session start → 30-min session window extended on Submit/Vote/Endorse. Decision matrix: high sim (≥0.50) + transcription ≥0.70 → accept; moderate sim (≥0.35) + transcription ≥0.90 → accept; else reject. Evidence logs scores + phrase_id only (no biometric data). Implementation: `src/voice/`, `voice-service/`. |
+| **Voice signature verification** | Dual verification (ECAPA2 192-dim embedding via Modal serverless + OpenAI GPT-4o-transcribe) — no local voice-service container. Transcription scoring runs in-process (word-overlap EN, subsequence+homophone FA). Enrollment: 3 phrases from pool of 200/language → averaged embedding stored as `LargeBinary`; raw audio stored in `enrollment_audio` table for model portability. Verification: 1 random phrase per session start → 30-min session window extended on Submit/Vote/Endorse. Decision matrix: unified thresholds (high sim >=0.45 + standard transcription >=0.70 -> accept; moderate sim >=0.38 + strict transcription >=0.80 -> accept). Evidence logs scores + phrase_id only (no biometric data). Implementation: `src/voice/`, `modal_functions/voice_embedding.py`. |
 
 ### Abuse Thresholds
 
@@ -483,11 +483,14 @@ collective-will/
 │   │   └── agenda.py            # Agenda building
 │   ├── voice/
 │   │   ├── __init__.py
-│   │   ├── client.py            # VoiceServiceClient — HTTP client for voice-service
+│   │   ├── client.py            # VoiceCloudClient — orchestrates OpenAI transcription + Modal embedding
+│   │   ├── transcription.py     # OpenAI GPT-4o-transcribe API client
+│   │   ├── embedding.py         # Modal serverless embedding API client
+│   │   ├── transcription_scoring.py  # Word-overlap (EN) and subsequence+homophone (FA) scoring
 │   │   ├── audio.py             # Audio download + duration validation
-│   │   ├── phrases.py           # 100 phrases per language (fa/en), selection
+│   │   ├── phrases.py           # 200 phrases per language (fa/en), selection
 │   │   ├── scoring.py           # Cosine similarity, decision matrix, embedding serialization
-│   │   ├── enrollment.py        # Multi-step enrollment state machine
+│   │   ├── enrollment.py        # Multi-step enrollment state machine (stores audio for portability)
 │   │   └── verification.py      # Session verification against stored embedding
 │   ├── models/
 │   │   ├── __init__.py
@@ -496,6 +499,7 @@ collective-will/
 │   │   ├── cluster.py
 │   │   ├── vote.py
 │   │   ├── endorsement.py
+│   │   ├── enrollment_audio.py  # Raw enrollment audio storage for model portability
 │   │   └── policy_option.py     # LLM-generated stance options per cluster
 │   ├── db/
 │   │   ├── __init__.py
@@ -538,6 +542,8 @@ collective-will/
 │   ├── test_handlers/
 │   ├── test_api/
 │   └── test_db/
+├── modal_functions/
+│   └── voice_embedding.py       # Modal serverless function: ECAPA2 speaker embedding
 ├── docker-compose.yml
 ├── pyproject.toml
 ├── .env.example

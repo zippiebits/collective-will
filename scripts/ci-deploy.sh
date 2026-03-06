@@ -28,7 +28,7 @@ else
 fi
 
 # 3. Every REQUIRED_SERVICES entry exists in compose
-REQUIRED_SERVICES=(postgres migrate backend scheduler voice-service web)
+REQUIRED_SERVICES=(postgres migrate backend scheduler web)
 COMPOSE_SERVICES="$(docker compose -f "${DEPLOY_DIR}/docker-compose.prod.yml" config --services 2>/dev/null || true)"
 
 for svc in "${REQUIRED_SERVICES[@]}"; do

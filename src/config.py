@@ -50,21 +50,18 @@ class Settings(BaseSettings):
     dispute_metrics_lookback_days: int = 7
     dispute_rate_tuning_threshold: float = 0.05
     dispute_disagreement_tuning_threshold: float = 0.30
-    # Voice verification
-    voice_service_url: str = "http://voice-service:8001"
-    voice_service_timeout_seconds: float = 30.0
-    voice_http_max_retries: int = 2
-    # Embedding similarity: per language-pair high; moderate = high - delta (relations from test fixtures)
-    voice_embedding_similarity_high_en_en: float = 0.55
-    voice_embedding_similarity_high_fa_fa: float = 0.50
-    voice_embedding_similarity_high_en_fa: float = 0.35
-    voice_embedding_similarity_delta: float = 0.10  # moderate = high - delta
-    # English transcription thresholds (word-overlap)
+    # Voice verification — cloud APIs
+    voice_embedding_endpoint_url: str = ""  # Modal web endpoint URL
+    voice_embedding_auth_token: str | None = None
+    voice_embedding_timeout_seconds: float = 15.0
+    voice_transcription_timeout_seconds: float = 10.0
+    voice_cloud_max_retries: int = 2
+    # Unified embedding thresholds (ECAPA2: same-speaker min ~0.57, cross-speaker max ~0.31)
+    voice_embedding_similarity_high: float = 0.45
+    voice_embedding_similarity_delta: float = 0.07  # moderate = high - delta = 0.38
+    # Unified transcription thresholds (GPT-4o-transcribe: EN and FA both score ~1.0)
     voice_transcription_score_standard: float = 0.70
-    voice_transcription_score_strict: float = 0.80  # enrollment + verification; was 0.90
-    # Farsi transcription thresholds (subsequence + homophones; typically lower scores)
-    voice_transcription_score_standard_fa: float = 0.50
-    voice_transcription_score_strict_fa: float = 0.65  # enrollment + verification; was 0.75
+    voice_transcription_score_strict: float = 0.80
     voice_enrollment_phrases_per_session: int = 3
     voice_enrollment_max_phrase_failures: int = 3
     voice_enrollment_attempts_per_phrase: int = 2

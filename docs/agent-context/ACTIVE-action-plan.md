@@ -848,13 +848,11 @@ once (3 phrases from pool of 100/language) and verify at each session start (1 p
 Dual verification: SpeechBrain ECAPA-TDNN embedding similarity + faster-whisper transcription match.
 ML inference runs in a separate Docker service (`voice-service/`).
 
-**Phase 1 — Voice Inference Service**
+**Phase 1 — Voice Inference Service (replaced by cloud APIs in Phase 6)**
 
 103. [done] Create `voice-service/` (separate FastAPI + SpeechBrain + faster-whisper)
-     - `Dockerfile`, `requirements.txt`, `app/main.py` (POST /process, GET /health)
-     - `app/audio.py` (OGG Opus → 16kHz WAV), `app/embed.py` (ECAPA-TDNN 192-dim), `app/transcribe.py` (faster-whisper + word-overlap)
-     - `app/schemas.py` (Pydantic request/response models)
-     - Added to `docker-compose.yml` and `deploy/docker-compose.prod.yml` with healthcheck
+     - **Superseded**: voice-service removed in Phase 6, replaced by OpenAI transcription + Modal ECAPA2 embedding
+     - Old code remains in git history for reference
 
 **Phase 2 — Core Infrastructure**
 
@@ -904,6 +902,57 @@ ML inference runs in a separate Docker service (`voice-service/`).
      - Updated `08-message-commands.md`: voice gate in route_message, voice bot_states
      - Updated `CLAUDE.md`: voice module in key source paths
      - Updated `ACTIVE-action-plan.md`: this workstream
+
+**Phase 6 — Voice Cloud Migration (2026-03)**
+
+Replaces local voice-service Docker container with cloud APIs. See `docs/decision-rationale/voice-cloud-migration.md`.
+
+109. [done] Create cloud API clients
+     - `src/voice/transcription.py`: OpenAI GPT-4o-transcribe API client
+     - `src/voice/embedding.py`: Modal serverless embedding API client
+     - `src/voice/transcription_scoring.py`: Ported scoring from voice-service (word-overlap EN, subsequence+homophone FA)
+
+110. [done] Rewrite `VoiceServiceClient` -> `VoiceCloudClient`
+     - `src/voice/client.py`: Parallel transcription + embedding via `asyncio.gather`, local scoring
+     - Updated enrollment.py and verification.py to use `VoiceCloudClient`
+
+111. [done] Add enrollment audio storage for model portability
+     - `src/models/enrollment_audio.py`: SQLAlchemy model (user_id, phrase_id, audio_ogg)
+     - `migrations/versions/005_enrollment_audio.py`: Creates table
+     - `src/voice/enrollment.py`: Stores raw OGG audio + model version during enrollment
+
+112. [done] Create Modal serverless embedding function
+     - `modal_functions/voice_embedding.py`: ECAPA2 on CPU, model baked into image, HF auth
+     - Successfully tested: 192-dim embedding, ~3.7s latency
+
+113. [done] Remove voice-service from infrastructure
+     - Removed from `docker-compose.yml`, `deploy/docker-compose.prod.yml`
+     - Removed from `REQUIRED_SERVICES` in `deploy/deploy.sh`
+     - Removed `build-voice` and `test-voice` jobs from `.github/workflows/ci.yml`
+     - Updated `deploy/public.env.staging` (cloud timeouts instead of voice-service timeout)
+     - Updated `src/config.py` (cloud settings replace voice-service settings)
+
+114. [done] Cloud migration tests (88 voice tests pass)
+     - `tests/test_voice/test_transcription_scoring.py` (12 tests)
+     - `tests/test_voice/test_transcription.py` (3 tests)
+     - `tests/test_voice/test_embedding.py` (3 tests)
+     - Updated `test_client.py`, `test_enrollment.py`, `test_verification.py`
+
+115. [done] Updated context documentation
+     - `docs/agent-context/messaging/10-voice-signature-verification.md`: Cloud architecture
+     - `docs/agent-context/CONTEXT-shared.md`: Frozen decisions, directory structure
+     - `docs/decision-rationale/voice-cloud-migration.md`: Migration rationale
+     - `docs/agent-context/ACTIVE-action-plan.md`: This workstream
+
+116. [operator action needed] Deploy Modal function and set env vars
+     - Run `modal deploy modal_functions/voice_embedding.py`
+     - Add `VOICE_EMBEDDING_ENDPOINT_URL` to VPS `.env.secrets`
+     - Verify `OPENAI_API_KEY` in VPS `.env.secrets`
+     - Deploy to VPS, test enrollment + verification
+
+117. [pending] Threshold tuning with real audio through GPT-4o-transcribe
+     - Test Farsi + English phrases, adjust transcription thresholds
+     - Test ECAPA2 embedding similarity distribution, adjust embedding thresholds
 
 ## Definition of Done (This Cycle)
 

@@ -112,13 +112,16 @@ The full system flow is documented in `docs/architecture-flow.md`. The short ver
 | `src/api/routes/` | REST endpoints: analytics, user, auth, webhooks |
 | `src/api/rate_limit.py` | In-process sliding-window rate limiters + `get_request_ip()` (CF-Connecting-IP preferred) |
 | `src/channels/base.py` | `BaseChannel` ABC — platform-agnostic interface (includes `download_file` for voice) |
-| `src/voice/` | Voice verification module: enrollment, verification, scoring, phrases, client |
+| `src/voice/client.py` | `VoiceCloudClient` — orchestrates OpenAI transcription + Modal embedding |
+| `src/voice/transcription.py` | OpenAI GPT-4o-transcribe API client |
+| `src/voice/embedding.py` | Modal serverless embedding API client |
+| `src/voice/transcription_scoring.py` | Word-overlap (EN) and subsequence+homophone (FA) scoring |
 | `src/voice/scoring.py` | Cosine similarity, decision matrix, embedding serialize/deserialize |
-| `src/voice/enrollment.py` | Multi-step enrollment state machine (3 phrases → averaged embedding) |
+| `src/voice/enrollment.py` | Multi-step enrollment state machine (3 phrases → averaged embedding + audio storage) |
 | `src/voice/verification.py` | Session verification: dual check (embedding + transcription) |
 | `src/voice/phrases.py` | Phrase pool loaded from `voice-phrases.json` (gitignored secret), random selection |
-| `src/voice/client.py` | HTTP client for voice-service (base64 encode, retry) |
-| `voice-service/` | Separate FastAPI service: SpeechBrain ECAPA-TDNN + faster-whisper inference |
+| `src/models/enrollment_audio.py` | Raw enrollment audio storage for model portability |
+| `modal_functions/voice_embedding.py` | Modal serverless function: ECAPA2 speaker embedding |
 | `src/scheduler/main.py` | `run_pipeline()` — full batch pipeline orchestration |
 | `web/lib/api.ts` | Auto-selects `BACKEND_API_BASE_URL` (server) vs `NEXT_PUBLIC_API_BASE_URL` (browser) |
 | `web/app/` | Next.js App Router pages |

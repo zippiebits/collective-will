@@ -24,12 +24,14 @@ def _mock_settings() -> None:  # type: ignore[misc]
     mock_settings.voice_enrollment_max_phrase_failures = 3
     mock_settings.voice_transcription_score_standard = 0.70
     mock_settings.voice_transcription_score_strict = 0.80
-    mock_settings.voice_transcription_score_strict_fa = 0.65
     mock_settings.voice_audio_min_duration_seconds = 2
     mock_settings.voice_audio_max_duration_seconds = 15
-    mock_settings.voice_service_url = "http://test:8001"
-    mock_settings.voice_service_timeout_seconds = 5.0
-    mock_settings.voice_http_max_retries = 1
+    mock_settings.voice_embedding_endpoint_url = "https://test.modal.run"
+    mock_settings.voice_embedding_auth_token = None
+    mock_settings.voice_embedding_timeout_seconds = 10.0
+    mock_settings.voice_transcription_timeout_seconds = 5.0
+    mock_settings.voice_cloud_max_retries = 1
+    mock_settings.openai_api_key = "sk-test"
     with (
         patch("src.voice.enrollment.get_settings", return_value=mock_settings),
         patch("src.voice.audio.get_settings", return_value=mock_settings),
@@ -78,7 +80,7 @@ class TestProcessEnrollmentAudio:
         channel.download_file = AsyncMock(return_value=b"fake-audio")
         session = AsyncMock()
 
-        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient:
+        with patch("src.voice.enrollment.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
@@ -106,7 +108,7 @@ class TestProcessEnrollmentAudio:
         channel.download_file = AsyncMock(return_value=b"fake-audio")
         session = AsyncMock()
 
-        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient, patch(
+        with patch("src.voice.enrollment.VoiceCloudClient") as MockClient, patch(
             "src.voice.enrollment.append_evidence", new_callable=AsyncMock
         ):
             mock_client = AsyncMock()
@@ -123,7 +125,7 @@ class TestProcessEnrollmentAudio:
 
     @pytest.mark.asyncio
     async def test_voice_service_raises_returns_service_error(self) -> None:
-        """When VoiceServiceClient.process_audio raises (500, timeout, etc.), return service_error."""
+        """When VoiceCloudClient.process_audio raises (500, timeout, etc.), return service_error."""
         state = init_enrollment_state("en")
         user = MagicMock()
         user.locale = "en"
@@ -131,7 +133,7 @@ class TestProcessEnrollmentAudio:
         channel.download_file = AsyncMock(return_value=b"fake-audio")
         session = AsyncMock()
 
-        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient:
+        with patch("src.voice.enrollment.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.side_effect = Exception("voice-service 500")
             MockClient.return_value = mock_client
@@ -166,7 +168,7 @@ class TestProcessEnrollmentAudio:
         channel.download_file = AsyncMock(return_value=b"fake-audio")
         session = AsyncMock()
 
-        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient:
+        with patch("src.voice.enrollment.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
@@ -192,6 +194,7 @@ class TestFinalizeEnrollment:
                 base64.b64encode(emb1_bytes).decode("ascii"),
                 base64.b64encode(emb2_bytes).decode("ascii"),
             ],
+            "phrase_ids": [0, 1, 2],
         }
 
         user = MagicMock()
@@ -204,4 +207,4 @@ class TestFinalizeEnrollment:
         assert user.voice_embedding is not None
         assert user.voice_enrolled_at is not None
         assert user.voice_verified_at is not None
-        assert user.voice_model_version == "speechbrain/spkrec-ecapa-voxceleb"
+        assert user.voice_model_version == "Jenthe/ECAPA2"

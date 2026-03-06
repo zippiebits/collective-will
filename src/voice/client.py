@@ -1,14 +1,14 @@
-"""HTTP client for the voice inference service."""
+"""Voice processing client: cloud transcription + cloud embedding + local scoring."""
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import logging
 from dataclasses import dataclass
 
-import httpx
-
-from src.config import get_settings
+from src.voice.embedding import get_speaker_embedding
+from src.voice.transcription import transcribe_audio
+from src.voice.transcription_scoring import score_transcription
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +21,8 @@ class VoiceProcessResult:
     model_version: str
 
 
-class VoiceServiceClient:
-    """Thin async HTTP client wrapping the voice-service /process endpoint."""
-
-    def __init__(self) -> None:
-        settings = get_settings()
-        self._base_url = settings.voice_service_url.rstrip("/")
-        self._timeout = settings.voice_service_timeout_seconds
-        self._max_retries = settings.voice_http_max_retries
+class VoiceCloudClient:
+    """Calls OpenAI for transcription + Modal for embedding, scores locally."""
 
     async def process_audio(
         self,
@@ -36,49 +30,25 @@ class VoiceServiceClient:
         expected_phrase: str,
         language: str | None = None,
     ) -> VoiceProcessResult:
-        """Send audio to the voice service for embedding + transcription.
+        """Process audio: transcribe (OpenAI) + embed (Modal) in parallel, score locally.
 
-        language: Optional Whisper language code (e.g. 'en', 'fa'). Improves
-            transcription accuracy for short clips when set.
-        Raises httpx.HTTPError on failure after retries.
+        Raises on API failure after retries.
         """
-        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-        payload: dict[str, str] = {
-            "audio_b64": audio_b64,
-            "expected_phrase": expected_phrase,
-        }
-        if language and language.strip():
-            payload["language"] = language.strip().lower()
+        lang = (language or "en").strip().lower()
 
-        last_exc: Exception | None = None
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    resp = await client.post(
-                        f"{self._base_url}/process", json=payload
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    return VoiceProcessResult(
-                        transcription=data["transcription"],
-                        transcription_score=data["transcription_score"],
-                        embedding=data["embedding"],
-                        model_version=data["model_version"],
-                    )
-            except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
-                last_exc = exc
-                logger.warning(
-                    "Voice service attempt %d/%d failed: %s",
-                    attempt, self._max_retries, exc,
-                )
+        # Run transcription and embedding in parallel
+        transcript_task = transcribe_audio(audio_bytes, language=lang)
+        embedding_task = get_speaker_embedding(audio_bytes)
 
-        raise last_exc  # type: ignore[misc]
+        transcript, (embedding, model_version) = await asyncio.gather(
+            transcript_task, embedding_task,
+        )
 
-    async def health_check(self) -> bool:
-        """Return True if the voice service is healthy."""
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"{self._base_url}/health")
-                return resp.status_code == 200
-        except (httpx.ConnectError, httpx.TimeoutException):
-            return False
+        score = score_transcription(transcript, expected_phrase, lang)
+
+        return VoiceProcessResult(
+            transcription=transcript,
+            transcription_score=score,
+            embedding=embedding,
+            model_version=model_version,
+        )

@@ -13,7 +13,7 @@ from src.config import get_settings
 from src.db.evidence import append_evidence
 from src.models.user import User
 from src.voice.audio import AudioValidationError, download_and_validate_audio
-from src.voice.client import VoiceServiceClient
+from src.voice.client import VoiceCloudClient
 from src.voice.phrases import get_phrase, select_phrases
 from src.voice.scoring import cosine_similarity, deserialize_embedding, voice_decision
 
@@ -57,7 +57,7 @@ async def verify_voice(
         return "audio_error"
 
     # Call voice service
-    client = VoiceServiceClient()
+    client = VoiceCloudClient()
     phrase_text = get_phrase(user.locale, phrase_id)
     try:
         result = await client.process_audio(
@@ -71,16 +71,10 @@ async def verify_voice(
     stored_embedding = deserialize_embedding(user.voice_embedding)
     sim = cosine_similarity(result.embedding, stored_embedding)
 
-    # Use locale-specific thresholds (verification is same-locale: EN-EN or FA-FA)
-    locale = (user.locale or "en").strip().lower()
-    if locale == "fa":
-        trans_standard = settings.voice_transcription_score_standard_fa
-        trans_strict = settings.voice_transcription_score_strict_fa
-        sim_high = settings.voice_embedding_similarity_high_fa_fa
-    else:
-        trans_standard = settings.voice_transcription_score_standard
-        trans_strict = settings.voice_transcription_score_strict
-        sim_high = settings.voice_embedding_similarity_high_en_en
+    # Unified thresholds (ECAPA2 + GPT-4o-transcribe perform equally across EN/FA)
+    trans_standard = settings.voice_transcription_score_standard
+    trans_strict = settings.voice_transcription_score_strict
+    sim_high = settings.voice_embedding_similarity_high
     sim_moderate = sim_high - settings.voice_embedding_similarity_delta
 
     decision = voice_decision(

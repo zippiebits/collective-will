@@ -19,7 +19,7 @@ HEALTH_RETRIES="${HEALTH_RETRIES:-12}"
 HEALTH_RETRY_INTERVAL_SECONDS="${HEALTH_RETRY_INTERVAL_SECONDS:-3}"
 MIN_DISK_AVAIL_GB="${MIN_DISK_AVAIL_GB:-2}"
 MIN_MEM_AVAIL_MB="${MIN_MEM_AVAIL_MB:-256}"
-REQUIRED_SERVICES=(postgres migrate backend scheduler voice-service web)
+REQUIRED_SERVICES=(postgres migrate backend scheduler web)
 
 if [[ "$ENV" != "production" && "$ENV" != "staging" ]]; then
   echo "Error: environment must be 'production' or 'staging'" >&2

@@ -13,19 +13,18 @@ from src.voice.verification import pick_verification_phrase, verify_voice
 @pytest.fixture(autouse=True)
 def _mock_settings() -> None:  # type: ignore[misc]
     mock_settings = MagicMock()
-    mock_settings.voice_embedding_similarity_high_en_en = 0.55
-    mock_settings.voice_embedding_similarity_high_fa_fa = 0.50
-    mock_settings.voice_embedding_similarity_high_en_fa = 0.35
-    mock_settings.voice_embedding_similarity_delta = 0.10
+    mock_settings.voice_embedding_similarity_high = 0.45
+    mock_settings.voice_embedding_similarity_delta = 0.07
     mock_settings.voice_transcription_score_standard = 0.70
     mock_settings.voice_transcription_score_strict = 0.80
-    mock_settings.voice_transcription_score_standard_fa = 0.50
-    mock_settings.voice_transcription_score_strict_fa = 0.65
     mock_settings.voice_audio_min_duration_seconds = 2
     mock_settings.voice_audio_max_duration_seconds = 15
-    mock_settings.voice_service_url = "http://test:8001"
-    mock_settings.voice_service_timeout_seconds = 5.0
-    mock_settings.voice_http_max_retries = 1
+    mock_settings.voice_embedding_endpoint_url = "https://test.modal.run"
+    mock_settings.voice_embedding_auth_token = None
+    mock_settings.voice_embedding_timeout_seconds = 10.0
+    mock_settings.voice_transcription_timeout_seconds = 5.0
+    mock_settings.voice_cloud_max_retries = 1
+    mock_settings.openai_api_key = "sk-test"
     with (
         patch("src.voice.verification.get_settings", return_value=mock_settings),
         patch("src.voice.audio.get_settings", return_value=mock_settings),
@@ -66,7 +65,7 @@ class TestVerifyVoice:
         channel.download_file = AsyncMock(return_value=b"audio")
         session = AsyncMock()
 
-        with patch("src.voice.verification.VoiceServiceClient") as MockClient:
+        with patch("src.voice.verification.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
@@ -93,7 +92,7 @@ class TestVerifyVoice:
         channel.download_file = AsyncMock(return_value=b"audio")
         session = AsyncMock()
 
-        with patch("src.voice.verification.VoiceServiceClient") as MockClient:
+        with patch("src.voice.verification.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
@@ -127,7 +126,7 @@ class TestVerifyVoice:
         channel.download_file = AsyncMock(return_value=b"audio")
         session = AsyncMock()
 
-        with patch("src.voice.verification.VoiceServiceClient") as MockClient:
+        with patch("src.voice.verification.VoiceCloudClient") as MockClient:
             mock_client = AsyncMock()
             mock_client.process_audio.side_effect = Exception("service down")
             MockClient.return_value = mock_client

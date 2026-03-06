@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Local integration test: send voice samples to a running voice-service and check
-transcription accuracy, same-speaker similarity, and cross-speaker distinction.
+"""Run voice embedding tests against the Modal-deployed ECAPA2 endpoint.
+
+Uses the same real .ogg fixtures and manifest as test-voice-transcription.py,
+but only runs embedding checks (same-speaker similarity, cross-speaker distinction).
+No transcription — Modal endpoint returns embeddings only.
 
 Usage:
-    # Start voice-service first (docker compose up voice-service)
-    uv run python scripts/test-voice-transcription.py [--url http://localhost:8001]
+    # Deploy first: modal deploy modal_functions/voice_embedding.py
+    # Then run (replace URL with the one printed by deploy):
+    uv run python scripts/test-voice-modal.py --url https://YOUR_USER--collective-will-voice-process.modal.run
 """
 
 from __future__ import annotations
@@ -13,7 +17,6 @@ import argparse
 import base64
 import json
 import math
-import re
 import sys
 from collections import defaultdict
 from itertools import combinations
@@ -23,27 +26,9 @@ import httpx
 
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "voice-samples"
 
-# Unified transcription threshold (GPT-4o-transcribe scores ~1.0 for both EN and FA)
-TRANSCRIPTION_THRESHOLD = 0.70
-
 # Unified embedding thresholds (ECAPA2: same-speaker min ~0.57, cross-speaker max ~0.31)
 SAME_SPEAKER_THRESHOLD = 0.45
 CROSS_SPEAKER_MAX_THRESHOLD = 0.40
-
-
-def _strip_punctuation(text: str) -> str:
-    """Remove punctuation and collapse spaces (for comparison)."""
-    text = re.sub(r"[^\w\s]", "", text, flags=re.UNICODE)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def word_overlap_score(expected: str, actual: str) -> float:
-    """Simple word-overlap ratio; punctuation stripped from input and output."""
-    exp = _strip_punctuation(expected).lower().split()
-    act = set(_strip_punctuation(actual).lower().split())
-    if not exp:
-        return 0.0
-    return sum(1 for w in exp if w in act) / len(exp)
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -56,13 +41,19 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def same_speaker_threshold(_locale_a: str, _locale_b: str) -> float:
-    """Return minimum similarity threshold for same-speaker pair."""
     return SAME_SPEAKER_THRESHOLD
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Test voice-service transcription + speaker embeddings")
-    parser.add_argument("--url", default="http://localhost:8001", help="Voice service base URL")
+    parser = argparse.ArgumentParser(
+        description="Test Modal voice embedding endpoint with real .ogg fixtures (same/cross-speaker)"
+    )
+    parser.add_argument(
+        "--url",
+        required=True,
+        help="Modal web endpoint URL (from 'modal deploy modal_functions/voice_embedding.py')",
+    )
+    parser.add_argument("--timeout", type=int, default=90, help="Request timeout per sample (default 90s)")
     args = parser.parse_args()
 
     manifest_path = FIXTURES / "manifest.json"
@@ -73,85 +64,63 @@ def main() -> None:
     with open(manifest_path) as f:
         manifest = json.load(f)
 
-    try:
-        resp = httpx.get(f"{args.url}/health", timeout=10)
-        resp.raise_for_status()
-        health = resp.json()
-        print(f"Voice service healthy: {health}")
-    except Exception as e:
-        print(f"ERROR: Cannot reach voice-service at {args.url}: {e}")
-        print("Start it with: docker compose up voice-service")
-        sys.exit(1)
+    # Modal endpoint: POST {"audio_b64": "..."} -> {"embedding": [...], "model_version": "..."}
+    url = args.url.rstrip("/")
+    print(f"Modal endpoint: {url}")
+    print(f"Fixtures: {FIXTURES} ({len(manifest['samples'])} samples)")
+    print()
 
-    # ── Part 1: Transcription ──
-    print(f"\n{'='*70}")
-    print(f"PART 1: Transcription accuracy ({len(manifest['samples'])} samples)")
-    print(f"{'='*70}\n")
-
-    transcription_passed = 0
-    transcription_failed = 0
     embeddings: dict[str, list[float]] = {}
     file_to_speaker: dict[str, str] = {}
     file_to_locale: dict[str, str] = {}
+    failed_fetches: list[str] = []
 
     for sample in manifest["samples"]:
         audio_path = FIXTURES / sample["file"]
         if not audio_path.exists():
             print(f"SKIP {sample['file']}: file not found")
+            failed_fetches.append(sample["file"])
             continue
 
         audio_b64 = base64.b64encode(audio_path.read_bytes()).decode("ascii")
-        expected = sample["expected_phrase"]
-
-        print(f"--- {sample['file']} ({sample['locale']}, {sample['speaker']}) ---")
-        print(f"  Expected: {expected}")
+        print(f"  {sample['file']} ({sample['locale']}, {sample['speaker']}) ... ", end="", flush=True)
 
         try:
-            payload = {
-                "audio_b64": audio_b64,
-                "expected_phrase": expected,
-                "language": sample["locale"],
-            }
             resp = httpx.post(
-                f"{args.url}/process",
-                json=payload,
-                timeout=60,
+                url,
+                json={"audio_b64": audio_b64},
+                timeout=args.timeout,
             )
             resp.raise_for_status()
             result = resp.json()
-
-            transcription = result["transcription"]
-            score = result["transcription_score"]
             embedding = result.get("embedding", [])
             model = result.get("model_version", "?")
-
-            if embedding:
-                embeddings[sample["file"]] = embedding
-                file_to_speaker[sample["file"]] = sample["speaker"]
-                file_to_locale[sample["file"]] = sample["locale"]
-
-            overlap = word_overlap_score(expected, transcription)
-
-            print(f"  Got:      {transcription}")
-            print(f"  Score:    {score:.3f} (service) / {overlap:.3f} (local word-overlap)")
-            print(f"  Embedding: {len(embedding)}-dim, model: {model}")
-
-            trans_thresh = TRANSCRIPTION_THRESHOLD
-            if score >= trans_thresh:
-                print(f"  Result:   PASS")
-                transcription_passed += 1
-            else:
-                print(f"  Result:   FAIL (score {score:.3f} < {trans_thresh})")
-                transcription_failed += 1
-
+            if not embedding:
+                print("FAIL (no embedding)")
+                failed_fetches.append(sample["file"])
+                continue
+            embeddings[sample["file"]] = embedding
+            file_to_speaker[sample["file"]] = sample["speaker"]
+            file_to_locale[sample["file"]] = sample["locale"]
+            print(f"OK ({len(embedding)}-dim, {model})")
         except Exception as e:
-            print(f"  ERROR: {e}")
-            transcription_failed += 1
+            print(f"FAIL: {e}")
+            failed_fetches.append(sample["file"])
 
-        print()
+    if failed_fetches:
+        print(f"\nERROR: Failed to get embeddings for: {failed_fetches}")
+        sys.exit(1)
+
+    if len(embeddings) < 2:
+        print("Need at least 2 samples with embeddings to run similarity checks.")
+        sys.exit(1)
+
+    by_speaker: dict[str, list[str]] = defaultdict(list)
+    for fname, spk in file_to_speaker.items():
+        by_speaker[spk].append(fname)
 
     # ── Part 2: Same-speaker embedding similarity ──
-    print(f"{'='*70}")
+    print(f"\n{'='*70}")
     print("PART 2: Same-speaker embedding similarity (per language-pair thresholds)")
     print(f"  Unified threshold >= {SAME_SPEAKER_THRESHOLD}")
     print(f"{'='*70}\n")
@@ -159,10 +128,6 @@ def main() -> None:
     same_passed = 0
     same_failed = 0
     same_sims: list[float] = []
-
-    by_speaker: dict[str, list[str]] = defaultdict(list)
-    for fname, spk in file_to_speaker.items():
-        by_speaker[spk].append(fname)
 
     for spk in sorted(by_speaker):
         files = sorted(by_speaker[spk])
@@ -218,12 +183,11 @@ def main() -> None:
             print(f"  Cross-speaker: avg={avg:.4f}, min={min(cross_sims):.4f}, max={max(cross_sims):.4f}\n")
 
     # ── Final summary ──
-    total_passed = transcription_passed + same_passed + cross_passed
-    total_failed = transcription_failed + same_failed + cross_failed
+    total_passed = same_passed + cross_passed
+    total_failed = same_failed + cross_failed
 
     print(f"{'='*70}")
-    print(f"FINAL RESULTS")
-    print(f"  Transcription:    {transcription_passed} passed, {transcription_failed} failed")
+    print("FINAL RESULTS (Modal embedding only; no transcription)")
     print(f"  Same-speaker sim: {same_passed} passed, {same_failed} failed")
     print(f"  Cross-speaker:    {cross_passed} passed, {cross_failed} failed")
     print(f"  Total:            {total_passed} passed, {total_failed} failed")

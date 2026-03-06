@@ -16,7 +16,7 @@ flow diagrams, see **[docs/architecture-flow.md](docs/architecture-flow.md)**.
   - `docs/infrastructure-guide.md`
   - `docs/roadmap.md`
   - `docs/v0-precoding-checklist.md`
-  - `docs/tickets/` — implementation tickets for planned changes and known bugs
+  - `docs/decision-rationale/` — architectural decision rationale and guardrails
   - `docs/CONTRIBUTING.md`
   - `docs/DECISION_LOCKS.md`
 - `src/` — Python backend (FastAPI, SQLAlchemy, pipeline)
