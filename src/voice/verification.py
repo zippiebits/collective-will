@@ -21,8 +21,9 @@ from src.voice.scoring import cosine_similarity, deserialize_embedding, voice_de
 logger = logging.getLogger(__name__)
 
 VerificationResult = Literal["accept", "reject", "audio_error", "service_error"]
-# When result is audio_error or service_error, error_code is set for user/support
-VerificationOutcome = tuple[VerificationResult, VoiceErrorCode | None]
+# User-facing validation reasons (too_short/too_long) or technical code (V002–V004)
+VerificationErrorReason = Literal["too_short", "too_long"] | VoiceErrorCode
+VerificationOutcome = tuple[VerificationResult, VerificationErrorReason | None]
 
 
 def pick_verification_phrase(locale: str) -> tuple[int, str]:
@@ -57,8 +58,8 @@ async def verify_voice(
     try:
         audio_bytes = await download_and_validate_audio(channel, file_id, duration)
     except AudioValidationError as e:
-        logger.warning("Verification audio_error V001: validation failed (%s)", e.reason)
-        return ("audio_error", "V001")
+        logger.warning("Verification audio validation failed (%s)", e.reason)
+        return ("audio_error", e.reason)  # "too_short" | "too_long" → user-facing message
     except Exception as e:
         logger.exception(
             "Verification audio_error V002: download failed (%s: %s)",

@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     voice_verification_max_attempts: int = 4
     voice_verification_rate_limit_count: int = 5
     voice_verification_rate_limit_window_seconds: int = 3600
-    voice_audio_min_duration_seconds: int = 2
-    voice_audio_max_duration_seconds: int = 15
+    voice_audio_min_duration_seconds: int = 1  # allow short phrases; technical codes only for pipeline failures
+    voice_audio_max_duration_seconds: int = 10
     voice_phrases_file: str = "voice-phrases.json"
 
     ops_console_enabled: bool = False

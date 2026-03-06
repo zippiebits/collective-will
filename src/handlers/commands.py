@@ -151,8 +151,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "voice_technical_error": "⚠️ خطا در پردازش صدا. کد: {code}. لطفاً دوباره تلاش کنید.",
         "voice_verify_rate_limited": "⚠️ تعداد تلاش‌های مجاز شما تمام شده. لطفاً بعداً دوباره امتحان کنید.",
         "voice_verify_nudge": "🔒 لطفاً یک پیام صوتی ارسال کنید تا هویت شما تأیید شود.",
-        "voice_audio_too_short": "⚠️ پیام صوتی خیلی کوتاه است. لطفاً حداقل ۲ ثانیه ضبط کنید.",
-        "voice_audio_too_long": "⚠️ پیام صوتی خیلی طولانی است. لطفاً حداکثر ۱۵ ثانیه ضبط کنید.",
+        "voice_audio_too_short": "⚠️ پیام صوتی خیلی کوتاه است. لطفاً حداقل ۱ ثانیه ضبط کنید.",
+        "voice_audio_too_long": "⚠️ پیام صوتی خیلی طولانی است. لطفاً حداکثر ۱۰ ثانیه ضبط کنید.",
     },
     "en": {
         "submission_prompt": "📝 Please type your concern or policy proposal:",
@@ -231,8 +231,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "voice_technical_error": "⚠️ Error processing audio. Code: {code}. Please try again.",
         "voice_verify_rate_limited": "⚠️ Too many attempts. Please try again later.",
         "voice_verify_nudge": "🔒 Please send a voice message to verify your identity.",
-        "voice_audio_too_short": "⚠️ Voice message too short. Please record at least 2 seconds.",
-        "voice_audio_too_long": "⚠️ Voice message too long. Please keep it under 15 seconds.",
+        "voice_audio_too_short": "⚠️ Voice message too short. Please record at least 1 second.",
+        "voice_audio_too_long": "⚠️ Voice message too long. Please keep it under 10 seconds.",
     },
 }
 
@@ -1330,7 +1330,21 @@ async def _handle_verification_voice(
         return "voice_verified"
 
     if result in ("audio_error", "service_error"):
-        code = error_code or "V003"  # fallback if ever missing
+        # User-facing validation: too short/long get specific messages; no technical code
+        if error_code == "too_short":
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_audio_too_short"),
+            ))
+            return "voice_audio_error"
+        if error_code == "too_long":
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_audio_too_long"),
+            ))
+            return "voice_audio_error"
+        # Technical failure: show code for debugging/support
+        code = error_code or "V003"
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,
             text=_msg(user.locale, "voice_technical_error", code=code),

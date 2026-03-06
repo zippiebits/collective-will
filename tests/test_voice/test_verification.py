@@ -143,16 +143,16 @@ class TestVerifyVoice:
         assert error_code == "V003"
 
     @pytest.mark.asyncio
-    async def test_audio_error_validation_returns_v001(self) -> None:
+    async def test_audio_error_validation_returns_user_facing_reason(self) -> None:
         stored = [1.0] * 192
         user = self._make_user(stored)
         channel = AsyncMock()
         session = AsyncMock()
-        # duration=1 triggers AudioValidationError (too_short) before download
+        # duration=1 with min=2 (mocked) triggers AudioValidationError(too_short)
         result, error_code = await verify_voice(
             user=user, channel=channel, file_id="f", duration=1,
             phrase_id=0, session=session,
         )
 
         assert result == "audio_error"
-        assert error_code == "V001"
+        assert error_code == "too_short"  # user-facing, not technical code
