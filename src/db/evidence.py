@@ -37,6 +37,7 @@ VALID_EVENT_TYPES = {
     "anchor_computed",
     "policy_options_generated",
     "voice_enrolled",
+    "voice_enroll_phrase_rejected",
     "voice_verified",
 }
 

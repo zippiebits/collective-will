@@ -23,8 +23,8 @@ def _mock_settings() -> None:  # type: ignore[misc]
     mock_settings.voice_enrollment_attempts_per_phrase = 2
     mock_settings.voice_enrollment_max_phrase_failures = 3
     mock_settings.voice_transcription_score_standard = 0.70
-    mock_settings.voice_transcription_score_strict = 0.90
-    mock_settings.voice_transcription_score_strict_fa = 0.75
+    mock_settings.voice_transcription_score_strict = 0.80
+    mock_settings.voice_transcription_score_strict_fa = 0.65
     mock_settings.voice_audio_min_duration_seconds = 2
     mock_settings.voice_audio_max_duration_seconds = 15
     mock_settings.voice_service_url = "http://test:8001"
@@ -67,7 +67,7 @@ class TestProcessEnrollmentAudio:
     async def test_accepted_phrase(self) -> None:
         fake_embedding = [0.1] * 192
         mock_result = MagicMock()
-        mock_result.transcription_score = 0.92  # >= strict (0.90) for acceptance
+        mock_result.transcription_score = 0.92  # >= strict (0.80) for acceptance
         mock_result.embedding = fake_embedding
         mock_result.model_version = "test"
 
@@ -95,17 +95,20 @@ class TestProcessEnrollmentAudio:
     @pytest.mark.asyncio
     async def test_rejected_phrase_retry(self) -> None:
         mock_result = MagicMock()
-        mock_result.transcription_score = 0.30  # Below threshold
+        mock_result.transcription_score = 0.30  # Below strict threshold (0.90)
         mock_result.embedding = [0.1] * 192
 
         state = init_enrollment_state("en")
         user = MagicMock()
+        user.id = MagicMock()
         user.locale = "en"
         channel = AsyncMock()
         channel.download_file = AsyncMock(return_value=b"fake-audio")
         session = AsyncMock()
 
-        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient:
+        with patch("src.voice.enrollment.VoiceServiceClient") as MockClient, patch(
+            "src.voice.enrollment.append_evidence", new_callable=AsyncMock
+        ):
             mock_client = AsyncMock()
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
@@ -148,7 +151,7 @@ class TestProcessEnrollmentAudio:
         emb_b64 = base64.b64encode(emb_bytes).decode("ascii")
 
         mock_result = MagicMock()
-        mock_result.transcription_score = 0.92  # >= strict (0.90) for acceptance
+        mock_result.transcription_score = 0.92  # >= strict (0.80) for acceptance
         mock_result.embedding = fake_embedding
         mock_result.model_version = "test"
 

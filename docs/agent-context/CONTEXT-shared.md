@@ -376,7 +376,7 @@ cluster_created, cluster_updated, cluster_merged, ballot_question_generated,
 policy_endorsed, policy_options_generated,
 vote_cast, cycle_opened, cycle_closed, user_verified, dispute_escalated,
 dispute_resolved, dispute_metrics_recorded, dispute_tuning_recommended,
-anchor_computed, voice_enrolled, voice_verified
+anchor_computed, voice_enrolled, voice_enroll_phrase_rejected, voice_verified
 ```
 
 Removed event types (clean slate — no backward compatibility):

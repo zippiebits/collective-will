@@ -126,7 +126,19 @@ async def process_enrollment_audio(
 
         return "phrase_accepted", state
 
-    # Phrase rejected — increment attempt
+    # Phrase rejected — log score for debugging/tuning, then increment attempt
+    await append_evidence(
+        session=session,
+        event_type="voice_enroll_phrase_rejected",
+        entity_type="user",
+        entity_id=user.id,
+        payload={
+            "transcription_score": round(result.transcription_score, 4),
+            "trans_strict": trans_strict,
+            "phrase_id": phrase_id,
+            "attempt": state["attempt"] + 1,
+        },
+    )
     state["attempt"] += 1
 
     if state["attempt"] >= settings.voice_enrollment_attempts_per_phrase:

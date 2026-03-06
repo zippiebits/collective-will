@@ -61,10 +61,10 @@ class Settings(BaseSettings):
     voice_embedding_similarity_delta: float = 0.10  # moderate = high - delta
     # English transcription thresholds (word-overlap)
     voice_transcription_score_standard: float = 0.70
-    voice_transcription_score_strict: float = 0.90
+    voice_transcription_score_strict: float = 0.80  # enrollment + verification; was 0.90
     # Farsi transcription thresholds (subsequence + homophones; typically lower scores)
     voice_transcription_score_standard_fa: float = 0.50
-    voice_transcription_score_strict_fa: float = 0.75
+    voice_transcription_score_strict_fa: float = 0.65  # enrollment + verification; was 0.75
     voice_enrollment_phrases_per_session: int = 3
     voice_enrollment_max_phrase_failures: int = 3
     voice_enrollment_attempts_per_phrase: int = 2

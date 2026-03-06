@@ -5,7 +5,7 @@
 - `messaging/08-message-commands` (voice gate in `route_message`, bot states)
 - `messaging/09-telegram-test-channel` (`TelegramChannel.download_file`)
 - `database/03-core-models` (User model: voice columns)
-- `database/04-evidence-store` (`voice_enrolled`, `voice_verified` event types)
+- `database/04-evidence-store` (`voice_enrolled`, `voice_enroll_phrase_rejected`, `voice_verified` event types)
 - `database/06-docker-compose` (voice-service container)
 
 ## Goal
@@ -43,7 +43,7 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 - `src/channels/types.py` — Added `UnifiedMessage.voice_file_id` and `voice_duration` fields
 - `src/channels/telegram.py` — Implemented `download_file`, voice message parsing in `parse_webhook`
 - `src/channels/whatsapp.py` — `download_file` raises `NotImplementedError` (post-MVP)
-- `src/db/evidence.py` — Added `voice_enrolled`, `voice_verified` to `VALID_EVENT_TYPES`
+- `src/db/evidence.py` — Added `voice_enrolled`, `voice_enroll_phrase_rejected`, `voice_verified` to `VALID_EVENT_TYPES`
 - `src/config.py` — Added all `voice_*` settings (including `voice_phrases_file`)
 - `src/api/rate_limit.py` — Added `check_voice_rate_limit` (sliding-window, config-backed limits)
 - `migrations/versions/004_voice_verification.py` — Adds voice columns to `users` table
@@ -65,9 +65,9 @@ Verify user identity via voice biometrics before allowing high-trust actions (su
 | `voice_embedding_similarity_high_en_fa` | `0.35` | Embedding high threshold (same speaker, EN-FA) |
 | `voice_embedding_similarity_delta` | `0.10` | Moderate = high − delta for the chosen pair |
 | `voice_transcription_score_standard` | `0.70` | Standard transcription threshold (English) |
-| `voice_transcription_score_strict` | `0.90` | Strict transcription threshold (English; compensates for moderate similarity) |
+| `voice_transcription_score_strict` | `0.80` | Strict transcription threshold (English; enrollment + verification) |
 | `voice_transcription_score_standard_fa` | `0.50` | Standard transcription threshold (Farsi; subsequence+homophone scoring) |
-| `voice_transcription_score_strict_fa` | `0.75` | Strict transcription threshold (Farsi) |
+| `voice_transcription_score_strict_fa` | `0.65` | Strict transcription threshold (Farsi) |
 | `voice_enrollment_phrases_per_session` | `3` | Phrases required per enrollment |
 | `voice_enrollment_max_phrase_failures` | `3` | Total phrase failures before blocking |
 | `voice_enrollment_attempts_per_phrase` | `2` | Retries per individual phrase |
@@ -97,7 +97,7 @@ Computed properties:
 1. **Trigger**: `route_message` calls `_start_voice_enrollment` after successful account linking, or when an unenrolled user sends a voice message, text message, or callback (e.g. Submit) — so the user always receives the first phrase and explanation immediately
 2. **State**: Stored in `user.bot_state_data` as dict: `{enrollment, step, phrase_ids, collected_embeddings, attempt, failures, failed_phrase_ids}`
 3. **Bot state**: `user.bot_state = "enrolling_voice"`
-4. **Per phrase**: User reads phrase → audio downloaded via `BaseChannel.download_file` → sent to voice-service → transcription score checked against locale-specific standard (`voice_transcription_score_standard` for EN, `voice_transcription_score_standard_fa` for FA)
+4. **Per phrase**: User reads phrase → audio downloaded via `BaseChannel.download_file` → sent to voice-service → transcription score checked against locale-specific **strict** threshold (`voice_transcription_score_strict` for EN, `voice_transcription_score_strict_fa` for FA). Rejections are logged as `voice_enroll_phrase_rejected` with score and threshold for tuning.
 5. **Accept**: Embedding stored in state as base64; advance to next phrase
 6. **Retry**: Attempt counter incremented; if attempts ≥ `voice_enrollment_attempts_per_phrase`, phrase replaced with a new one
 7. **Block**: If total failures ≥ `voice_enrollment_max_phrase_failures`, enrollment blocked; `bot_state_data` set to `{"enrollment_blocked_at": ISO timestamp}` for 24-hour cooldown enforcement
@@ -108,7 +108,7 @@ Computed properties:
 1. **Trigger**: `route_message` voice gate detects `is_voice_enrolled and not is_voice_session_active`
 2. **Prompt**: Random phrase selected via `pick_verification_phrase`; stored in `user.bot_state_data["phrase_id"]`
 3. **Bot state**: `user.bot_state = "awaiting_voice"`
-4. **Check**: Audio processed by voice-service → `cosine_similarity` against stored embedding + transcription score (Farsi uses subsequence+homophones) → `voice_decision` applies dual-threshold matrix with locale-specific transcription thresholds (EN: standard 0.70, strict 0.90; FA: standard 0.50, strict 0.75)
+4. **Check**: Audio processed by voice-service → `cosine_similarity` against stored embedding + transcription score (Farsi uses subsequence+homophones) → `voice_decision` applies dual-threshold matrix with locale-specific transcription thresholds (EN: standard 0.70, strict 0.80; FA: standard 0.50, strict 0.65)
 5. **Accept**: `voice_verified_at` updated, `voice_verified` evidence logged, user proceeds to main menu
 6. **Reject**: New phrase prompted (re-verification)
 7. **Rate limit**: `check_voice_rate_limit` (5 attempts/hour per user) checked before each attempt
@@ -154,6 +154,7 @@ Separate FastAPI container running SpeechBrain ECAPA-TDNN and faster-whisper on 
 | Event | Payload (no biometric data) |
 |-------|-----------------------------|
 | `voice_enrolled` | `{phrases_used, model_version}` |
+| `voice_enroll_phrase_rejected` | `{transcription_score, trans_strict, phrase_id, attempt}` (for tuning; no PII) |
 | `voice_verified` | `{decision, embedding_similarity, transcription_score, phrase_id}` |
 
 ### Channel Integration
