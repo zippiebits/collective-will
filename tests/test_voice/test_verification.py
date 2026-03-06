@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.voice.audio import AudioValidationError
 from src.voice.scoring import serialize_embedding
 from src.voice.verification import pick_verification_phrase, verify_voice
 
