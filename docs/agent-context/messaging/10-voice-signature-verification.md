@@ -33,7 +33,8 @@ Cloud-based: no local voice-service container.
 - `src/voice/phrases.py` -- Loads phrase pools from external JSON file (`voice-phrases.json`), `select_phrases`, `get_phrase`, `pool_size` (uses `secrets` for selection)
 - `src/voice/scoring.py` -- `cosine_similarity`, `voice_decision` (decision matrix), `serialize_embedding`, `deserialize_embedding`, `average_embeddings`
 - `src/voice/enrollment.py` -- Multi-step enrollment state machine: `init_enrollment_state`, `start_enrollment`, `get_current_phrase`, `process_enrollment_audio`, `finalize_enrollment`; stores collected audio for model portability
-- `src/voice/verification.py` -- Session verification: `pick_verification_phrase`, `verify_voice`
+- `src/voice/verification.py` -- Session verification: `pick_verification_phrase`, `verify_voice` (returns `VerificationOutcome` tuple)
+- `src/voice/errors.py` -- `VoiceErrorCode` literal type and descriptions for user-facing technical error codes (V001–V004)
 
 ### Modal serverless function
 
@@ -70,8 +71,8 @@ Cloud-based: no local voice-service container.
 | `voice_cloud_max_retries` | `2` | Retry count on cloud API failures |
 | `voice_embedding_similarity_high` | `0.45` | Unified embedding high threshold (same-speaker min ~0.57, cross-speaker max ~0.31) |
 | `voice_embedding_similarity_delta` | `0.07` | Moderate = high - delta = 0.38 |
-| `voice_transcription_score_standard` | `0.70` | Unified standard transcription threshold (EN and FA) |
-| `voice_transcription_score_strict` | `0.80` | Unified strict transcription threshold (EN and FA) |
+| `voice_transcription_score_standard` | `0.65` | Unified standard transcription threshold (EN and FA) |
+| `voice_transcription_score_strict` | `0.75` | Unified strict transcription threshold (EN and FA) |
 | `voice_enrollment_phrases_per_session` | `3` | Phrases required per enrollment |
 | `voice_enrollment_max_phrase_failures` | `3` | Total phrase failures before blocking |
 | `voice_enrollment_attempts_per_phrase` | `2` | Retries per individual phrase |
@@ -109,10 +110,12 @@ Computed properties on User:
 
 ### Enrollment Flow (`src/voice/enrollment.py`)
 
-1. **Trigger**: `route_message` calls `_start_voice_enrollment` after successful account linking, or when an unenrolled user sends a voice message, text message, or callback
-2. **State**: Stored in `user.bot_state_data` as dict: `{enrollment, step, phrase_ids, collected_embeddings, collected_audio, attempt, failures, failed_phrase_ids, model_version}`
-3. **Bot state**: `user.bot_state = "enrolling_voice"`
-4. **Per phrase**: User reads phrase -> audio downloaded via `BaseChannel.download_file` -> sent to cloud APIs (OpenAI transcription + Modal embedding in parallel) -> transcription score checked against locale-specific **strict** threshold. Rejections logged as `voice_enroll_phrase_rejected`.
+1. **Language choice**: After account linking, `route_message` calls `_prompt_enrollment_language` which sets `bot_state = "choosing_voice_lang"` and shows a bilingual language picker (🇬🇧 English / 🇮🇷 فارسی). User picks language → locale is set → enrollment starts.
+2. **Trigger**: `_start_voice_enrollment` is called after language choice, or when an unenrolled user sends a voice message directly.
+3. **State**: Stored in `user.bot_state_data` as dict: `{enrollment, step, phrase_ids, collected_embeddings, collected_audio, attempt, failures, failed_phrase_ids, model_version}`
+4. **Bot state**: `user.bot_state = "enrolling_voice"`
+5. **Language switch**: All enrollment and verification messages include a 🌐 language switch button (`vlang_en`/`vlang_fa` callback). Pressing it changes locale and restarts enrollment with new phrases, or picks a new verification phrase in the new language.
+6. **Per phrase**: User reads phrase -> audio downloaded via `BaseChannel.download_file` -> sent to cloud APIs (OpenAI transcription + Modal embedding in parallel) -> transcription score checked against unified **strict** threshold. Rejections logged as `voice_enroll_phrase_rejected`.
 5. **Accept**: Embedding stored in state as base64; raw audio stored as base64 for model portability; advance to next phrase
 6. **Retry**: Attempt counter incremented; if attempts >= `voice_enrollment_attempts_per_phrase`, phrase replaced with a new one
 7. **Block**: If total failures >= `voice_enrollment_max_phrase_failures`, enrollment blocked; 24-hour cooldown
@@ -121,12 +124,13 @@ Computed properties on User:
 ### Verification Flow (`src/voice/verification.py`)
 
 1. **Trigger**: `route_message` voice gate detects `is_voice_enrolled and not is_voice_session_active`
-2. **Prompt**: Random phrase selected via `pick_verification_phrase`
+2. **Prompt**: Random phrase selected via `pick_verification_phrase`; shown with cancel + language switch buttons
 3. **Bot state**: `user.bot_state = "awaiting_voice"`
 4. **Check**: Audio processed by cloud APIs (parallel) -> `cosine_similarity` against stored embedding + transcription score -> `voice_decision` applies dual-threshold matrix
-5. **Accept**: `voice_verified_at` updated, `voice_verified` evidence logged, user proceeds
-6. **Reject**: New phrase prompted (re-verification)
-7. **Rate limit**: `check_voice_rate_limit` (5 attempts/hour per user) checked before each attempt
+5. **Return**: `verify_voice` returns `VerificationOutcome = tuple[VerificationResult, VoiceErrorCode | None]`. Error codes (V001–V004) shown to user for support reference.
+6. **Accept**: `voice_verified_at` updated, `voice_verified` evidence logged, user proceeds
+7. **Reject**: Failure message shown, then new phrase prompted (re-verification)
+8. **Rate limit**: `check_voice_rate_limit` (5 attempts/hour per user) checked before each attempt
 
 ### Decision Matrix (`src/voice/scoring.py: voice_decision`)
 

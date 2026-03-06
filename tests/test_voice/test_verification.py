@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.voice.audio import AudioValidationError
 from src.voice.scoring import serialize_embedding
 from src.voice.verification import pick_verification_phrase, verify_voice
 
@@ -15,8 +16,8 @@ def _mock_settings() -> None:  # type: ignore[misc]
     mock_settings = MagicMock()
     mock_settings.voice_embedding_similarity_high = 0.45
     mock_settings.voice_embedding_similarity_delta = 0.07
-    mock_settings.voice_transcription_score_standard = 0.70
-    mock_settings.voice_transcription_score_strict = 0.80
+    mock_settings.voice_transcription_score_standard = 0.65
+    mock_settings.voice_transcription_score_strict = 0.75
     mock_settings.voice_audio_min_duration_seconds = 2
     mock_settings.voice_audio_max_duration_seconds = 15
     mock_settings.voice_embedding_endpoint_url = "https://test.modal.run"
@@ -70,12 +71,13 @@ class TestVerifyVoice:
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
             with patch("src.voice.verification.append_evidence", new_callable=AsyncMock):
-                result = await verify_voice(
+                result, error_code = await verify_voice(
                     user=user, channel=channel, file_id="f", duration=5,
                     phrase_id=0, session=session,
                 )
 
         assert result == "accept"
+        assert error_code is None
         assert user.voice_verified_at is not None
 
     @pytest.mark.asyncio
@@ -97,7 +99,7 @@ class TestVerifyVoice:
             mock_client.process_audio.return_value = mock_result
             MockClient.return_value = mock_client
             with patch("src.voice.verification.append_evidence", new_callable=AsyncMock):
-                result = await verify_voice(
+                result, error_code = await verify_voice(
                     user=user, channel=channel, file_id="f", duration=5,
                     phrase_id=0, session=session,
                 )
@@ -105,17 +107,19 @@ class TestVerifyVoice:
         # Not guaranteed reject since embedding may not be truly orthogonal
         # but with very different embeddings it should reject
         assert result in ("accept", "reject")
+        assert error_code is None
 
     @pytest.mark.asyncio
     async def test_no_embedding_rejects(self) -> None:
         user = MagicMock()
         user.voice_embedding = None
 
-        result = await verify_voice(
+        result, error_code = await verify_voice(
             user=user, channel=AsyncMock(), file_id="f", duration=5,
             phrase_id=0, session=AsyncMock(),
         )
         assert result == "reject"
+        assert error_code is None
 
     @pytest.mark.asyncio
     async def test_service_error(self) -> None:
@@ -131,9 +135,25 @@ class TestVerifyVoice:
             mock_client.process_audio.side_effect = Exception("service down")
             MockClient.return_value = mock_client
 
-            result = await verify_voice(
+            result, error_code = await verify_voice(
                 user=user, channel=channel, file_id="f", duration=5,
                 phrase_id=0, session=session,
             )
 
         assert result == "service_error"
+        assert error_code == "V003"
+
+    @pytest.mark.asyncio
+    async def test_audio_error_validation_returns_v001(self) -> None:
+        stored = [1.0] * 192
+        user = self._make_user(stored)
+        channel = AsyncMock()
+        session = AsyncMock()
+        # duration=1 triggers AudioValidationError (too_short) before download
+        result, error_code = await verify_voice(
+            user=user, channel=channel, file_id="f", duration=1,
+            phrase_id=0, session=session,
+        )
+
+        assert result == "audio_error"
+        assert error_code == "V001"

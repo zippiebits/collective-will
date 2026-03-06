@@ -50,7 +50,7 @@ Replace local voice-service with cloud APIs:
 GPT-4o-transcribe produces perfect scores (1.0) for both English and Farsi, and ECAPA2 gives strong same-speaker similarity across languages (min 0.57 EN-FA). The per-locale threshold complexity is unnecessary:
 - Embedding high: 0.45 (unified) with 0.12 guard above cross-speaker max (0.31)
 - Embedding moderate: 0.38 with 0.07 guard above cross-speaker max
-- Transcription standard: 0.70, strict: 0.80 (both languages)
+- Transcription standard: 0.65, strict: 0.75 (both languages)
 
 ### Enrollment audio storage
 Raw OGG audio (~15-25KB per phrase) stored in `enrollment_audio` table for model portability. If we switch embedding models, we can re-compute embeddings from stored audio without re-enrolling users.

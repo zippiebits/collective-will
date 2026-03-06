@@ -944,15 +944,24 @@ Replaces local voice-service Docker container with cloud APIs. See `docs/decisio
      - `docs/decision-rationale/voice-cloud-migration.md`: Migration rationale
      - `docs/agent-context/ACTIVE-action-plan.md`: This workstream
 
-116. [operator action needed] Deploy Modal function and set env vars
-     - Run `modal deploy modal_functions/voice_embedding.py`
-     - Add `VOICE_EMBEDDING_ENDPOINT_URL` to VPS `.env.secrets`
-     - Verify `OPENAI_API_KEY` in VPS `.env.secrets`
-     - Deploy to VPS, test enrollment + verification
+116. [done] Deploy Modal function and set env vars
+     - Modal function deployed, endpoint URL in `.env.secrets`
+     - OPENAI_API_KEY verified on VPS
+     - Enrollment + verification tested end-to-end
 
-117. [pending] Threshold tuning with real audio through GPT-4o-transcribe
-     - Test Farsi + English phrases, adjust transcription thresholds
-     - Test ECAPA2 embedding similarity distribution, adjust embedding thresholds
+117. [done] Threshold tuning with real audio through GPT-4o-transcribe
+     - Unified EN/FA thresholds (removed per-locale branching)
+     - Embedding high: 0.45, moderate: 0.38 (delta 0.07)
+     - Transcription standard: 0.65, strict: 0.75
+     - Tested with 12 fixtures (2 speakers × 2 languages × 3 phrases), all pass
+
+118. [done] Voice enrollment UX: language choice + language switch
+     - Pre-enrollment language picker (`choosing_voice_lang` bot state)
+     - Language switch button (🌐) on all enrollment and verification messages
+     - `vlang_en`/`vlang_fa` callbacks bypass voice gate, work at any stage
+     - `src/voice/errors.py`: user-facing error codes V001–V004
+     - `verify_voice` returns `VerificationOutcome` tuple with error code
+     - 7 new tests in `test_commands_voice.py` (16 total)
 
 ## Definition of Done (This Cycle)
 

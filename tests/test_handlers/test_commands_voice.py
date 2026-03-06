@@ -67,8 +67,8 @@ class TestVoiceGateNotEnrolled:
     """User exists but is not voice-enrolled."""
 
     @pytest.mark.asyncio
-    async def test_text_message_starts_enrollment_with_phrase(self) -> None:
-        """Non-enrolled user sending text now starts enrollment and receives first phrase (same as voice)."""
+    async def test_text_message_prompts_language_choice(self) -> None:
+        """Non-enrolled user sending text gets language choice before enrollment."""
         user = _make_user(enrolled=False)
         session = AsyncMock()
         channel = AsyncMock()
@@ -79,23 +79,18 @@ class TestVoiceGateNotEnrolled:
         session.execute = AsyncMock(return_value=mock_result)
 
         settings_with_fixture = _voice_phrases_settings()
-        with (
-            patch("src.config.get_settings", return_value=settings_with_fixture),
-            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
-        ):
-            mock_enroll.return_value = {
-                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
-                "collected_embeddings": [], "attempt": 0, "failures": 0,
-                "failed_phrase_ids": [],
-            }
+        with patch("src.config.get_settings", return_value=settings_with_fixture):
             result = await route_message(session=session, message=msg, channel=channel)
 
-        assert result == "voice_enrollment_started"
+        assert result == "voice_language_choice_prompted"
+        assert user.bot_state == "choosing_voice_lang"
         channel.send_message.assert_called_once()
-        sent_text = channel.send_message.call_args[0][0].text
-        assert "Phrase 1 of" in sent_text or "read the following phrase" in sent_text.lower()
-        # Placeholder filled with actual phrase from fixture (no raw {phrase} in output)
-        assert "{phrase}" not in sent_text
+        sent = channel.send_message.call_args[0][0]
+        # Should have language choice keyboard
+        assert sent.reply_markup is not None
+        buttons = sent.reply_markup["inline_keyboard"][0]
+        callback_values = {b["callback_data"] for b in buttons}
+        assert callback_values == {"vlang_en", "vlang_fa"}
 
     @pytest.mark.asyncio
     async def test_voice_message_starts_enrollment(self) -> None:
@@ -320,3 +315,166 @@ class TestVoiceRateLimiterConfig:
 
         # Clean up
         rl_mod._voice_verify_limiter = None
+
+
+def _make_callback_message(callback_data: str, callback_query_id: str = "cq-1") -> UnifiedMessage:
+    return UnifiedMessage(
+        text="",
+        sender_ref="ref-test",
+        platform="telegram",
+        message_id="msg-cb",
+        callback_data=callback_data,
+        callback_query_id=callback_query_id,
+    )
+
+
+class TestVoiceLanguageChoice:
+    """Language choice before enrollment and language switch during enrollment/verification."""
+
+    @pytest.mark.asyncio
+    async def test_language_choice_starts_enrollment(self) -> None:
+        """Pressing vlang_en while in choosing_voice_lang starts enrollment."""
+        user = _make_user(enrolled=False, bot_state="choosing_voice_lang")
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_callback_message("vlang_en")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
+            mock_enroll.return_value = {
+                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+                "collected_embeddings": [], "attempt": 0, "failures": 0,
+                "failed_phrase_ids": [],
+            }
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_started"
+        assert user.locale == "en"
+
+    @pytest.mark.asyncio
+    async def test_language_choice_fa_sets_locale(self) -> None:
+        """Pressing vlang_fa sets locale to fa."""
+        user = _make_user(enrolled=False, bot_state="choosing_voice_lang")
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_callback_message("vlang_fa")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
+            mock_enroll.return_value = {
+                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+                "collected_embeddings": [], "attempt": 0, "failures": 0,
+                "failed_phrase_ids": [],
+            }
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_started"
+        assert user.locale == "fa"
+
+    @pytest.mark.asyncio
+    async def test_language_switch_during_enrollment_restarts(self) -> None:
+        """Pressing vlang_fa mid-enrollment resets and restarts with new language."""
+        state = {
+            "enrollment": True, "step": 1, "phrase_ids": [1, 2, 3],
+            "collected_embeddings": [b"\x00"], "attempt": 0, "failures": 0,
+            "failed_phrase_ids": [],
+        }
+        user = _make_user(enrolled=False, bot_state="enrolling_voice", bot_state_data=state)
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_callback_message("vlang_fa")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.start_enrollment", new_callable=AsyncMock) as mock_enroll,
+        ):
+            mock_enroll.return_value = {
+                "enrollment": True, "step": 0, "phrase_ids": [1, 2, 3],
+                "collected_embeddings": [], "attempt": 0, "failures": 0,
+                "failed_phrase_ids": [],
+            }
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_enrollment_started"
+        assert user.locale == "fa"
+
+    @pytest.mark.asyncio
+    async def test_language_switch_during_verification(self) -> None:
+        """Pressing vlang_en during verification starts new verification with English phrase."""
+        user = _make_user(enrolled=True, session_active=False, bot_state="awaiting_voice")
+        user.locale = "fa"
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_callback_message("vlang_en")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with (
+            patch("src.config.get_settings", return_value=settings_with_fixture),
+            patch("src.handlers.commands.check_voice_rate_limit", return_value=True),
+        ):
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_verification_prompted"
+        assert user.locale == "en"
+
+    @pytest.mark.asyncio
+    async def test_text_during_language_choice_reprompts(self) -> None:
+        """Text message while choosing_voice_lang re-prompts language choice."""
+        user = _make_user(enrolled=False, bot_state="choosing_voice_lang")
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_text_message("hello")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with patch("src.config.get_settings", return_value=settings_with_fixture):
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_language_choice_prompted"
+        channel.send_message.assert_called_once()
+        sent = channel.send_message.call_args[0][0]
+        assert sent.reply_markup is not None
+
+    @pytest.mark.asyncio
+    async def test_callback_during_language_choice_reprompts(self) -> None:
+        """Non-vlang callback while choosing_voice_lang re-prompts."""
+        user = _make_user(enrolled=False, bot_state="choosing_voice_lang")
+        session = AsyncMock()
+        channel = AsyncMock()
+        msg = _make_callback_message("submit")
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        session.execute = AsyncMock(return_value=mock_result)
+
+        settings_with_fixture = _voice_phrases_settings()
+        with patch("src.config.get_settings", return_value=settings_with_fixture):
+            result = await route_message(session=session, message=msg, channel=channel)
+
+        assert result == "voice_language_choice_prompted"

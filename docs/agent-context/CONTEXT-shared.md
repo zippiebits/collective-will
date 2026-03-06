@@ -237,7 +237,7 @@ locale: "fa" | "en"
 trust_score: float                     # Reserved for v1-style risk scoring unless an explicit v0 policy uses it
 contribution_count: int              # processed submissions + recorded policy endorsements
 is_anonymous: bool
-bot_state: str | None               # Current interaction state (e.g., "awaiting_submission", "voting", "enrolling_voice", "awaiting_voice")
+bot_state: str | None               # Current interaction state (e.g., "awaiting_submission", "voting", "choosing_voice_lang", "enrolling_voice", "awaiting_voice")
 bot_state_data: dict | None         # JSONB — session data for multi-step flows (e.g., voting progress, enrollment state)
 voice_enrolled_at: datetime | None  # When voice enrollment was completed
 voice_verified_at: datetime | None  # Last successful voice verification (session expires after 30 min)

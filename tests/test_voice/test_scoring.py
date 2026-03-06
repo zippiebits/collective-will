@@ -86,11 +86,11 @@ class TestVoiceDecision:
     # Default thresholds from config
     SIM_HIGH = 0.50
     SIM_MOD = 0.35
-    TRANS_STD = 0.70
-    TRANS_STRICT = 0.90
+    TRANS_STD = 0.65
+    TRANS_STRICT = 0.75
 
     def test_high_sim_standard_trans_accept(self) -> None:
-        result = voice_decision(0.60, 0.75, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
+        result = voice_decision(0.60, 0.70, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
         assert result == "accept"
 
     def test_high_sim_low_trans_reject(self) -> None:
@@ -98,11 +98,11 @@ class TestVoiceDecision:
         assert result == "reject"
 
     def test_moderate_sim_strict_trans_accept(self) -> None:
-        result = voice_decision(0.40, 0.95, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
+        result = voice_decision(0.40, 0.80, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
         assert result == "accept"
 
     def test_moderate_sim_standard_trans_reject(self) -> None:
-        result = voice_decision(0.40, 0.75, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
+        result = voice_decision(0.40, 0.70, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
         assert result == "reject"
 
     def test_low_sim_reject(self) -> None:
@@ -110,13 +110,13 @@ class TestVoiceDecision:
         assert result == "reject"
 
     def test_boundary_high_sim(self) -> None:
-        result = voice_decision(0.50, 0.70, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
+        result = voice_decision(0.50, 0.65, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
         assert result == "accept"
 
     def test_boundary_moderate_sim(self) -> None:
-        result = voice_decision(0.35, 0.90, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
+        result = voice_decision(0.35, 0.75, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
         assert result == "accept"
 
     def test_just_below_moderate_reject(self) -> None:
         result = voice_decision(0.34, 1.0, self.SIM_HIGH, self.SIM_MOD, self.TRANS_STD, self.TRANS_STRICT)
-        assert result == "reject"
+        assert result == "reject"  # sim 0.34 < SIM_MOD 0.35

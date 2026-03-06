@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     voice_embedding_similarity_high: float = 0.45
     voice_embedding_similarity_delta: float = 0.07  # moderate = high - delta = 0.38
     # Unified transcription thresholds (GPT-4o-transcribe: EN and FA both score ~1.0)
-    voice_transcription_score_standard: float = 0.70
-    voice_transcription_score_strict: float = 0.80
+    voice_transcription_score_standard: float = 0.65
+    voice_transcription_score_strict: float = 0.75
     voice_enrollment_phrases_per_session: int = 3
     voice_enrollment_max_phrase_failures: int = 3
     voice_enrollment_attempts_per_phrase: int = 2

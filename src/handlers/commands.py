@@ -108,6 +108,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_complete": "✅ همه سیاست‌ها بررسی شدند!",
         "cycle_timing": "🗳️ رای‌گیری فعال — {policies} سیاست\n⏰ پایان: {ends_at}\n",
         # Voice enrollment
+        "voice_enroll_choose_lang": (
+            "🎤 ثبت صدا برای تأیید هویت\n\n"
+            "برای امنیت و اصل «یک نفر، یک رای» باید صدای شما را ثبت کنیم.\n"
+            "شما {total} عبارت کوتاه را با صدای بلند می‌خوانید.\n\n"
+            "زبان عبارات را انتخاب کنید:\n\n"
+            "🎤 Voice registration\n\n"
+            "To keep the process secure, we need to register your voice.\n"
+            "You'll read {total} short phrases aloud.\n\n"
+            "Choose your phrase language:"
+        ),
         "voice_enroll_start": (
             "🎤 ثبت صدا برای تأیید هویت\n\n"
             "برای اینکه بتوانیم هنگام ارسال پیشنهاد یا رای تأیید کنیم که شما هستید، باید صدای شما را ثبت کنیم. "
@@ -138,6 +148,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "voice_verify_prompt": "🔒 لطفاً برای تأیید هویت، عبارت زیر را بخوانید:\n\n«{phrase}»",
         "voice_verify_success": "✅ هویت شما تأیید شد!",
         "voice_verify_failed": "❌ تأیید صوتی ناموفق بود. لطفاً دوباره تلاش کنید.",
+        "voice_technical_error": "⚠️ خطا در پردازش صدا. کد: {code}. لطفاً دوباره تلاش کنید.",
         "voice_verify_rate_limited": "⚠️ تعداد تلاش‌های مجاز شما تمام شده. لطفاً بعداً دوباره امتحان کنید.",
         "voice_verify_nudge": "🔒 لطفاً یک پیام صوتی ارسال کنید تا هویت شما تأیید شود.",
         "voice_audio_too_short": "⚠️ پیام صوتی خیلی کوتاه است. لطفاً حداقل ۲ ثانیه ضبط کنید.",
@@ -177,6 +188,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "endorse_complete": "✅ All policies reviewed!",
         "cycle_timing": "🗳️ Active vote — {policies} policies\n⏰ Ends: {ends_at}\n",
         # Voice enrollment
+        "voice_enroll_choose_lang": (
+            "🎤 Voice registration\n\n"
+            "To keep the process secure, we need to register your voice.\n"
+            "You'll read {total} short phrases aloud.\n\n"
+            "Choose your phrase language:\n\n"
+            "🎤 ثبت صدا برای تأیید هویت\n\n"
+            "برای امنیت و اصل «یک نفر، یک رای» باید صدای شما را ثبت کنیم.\n"
+            "شما {total} عبارت کوتاه را با صدای بلند می‌خوانید.\n\n"
+            "زبان عبارات را انتخاب کنید:"
+        ),
         "voice_enroll_start": (
             "🎤 Voice registration for identity verification\n\n"
             "We need to register your voice so we can verify it's you when you submit proposals or vote. "
@@ -207,6 +228,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "voice_verify_prompt": "🔒 To verify your identity, please read the following phrase:\n\n\"{phrase}\"",
         "voice_verify_success": "✅ Your identity has been verified!",
         "voice_verify_failed": "❌ Voice verification failed. Please try again.",
+        "voice_technical_error": "⚠️ Error processing audio. Code: {code}. Please try again.",
         "voice_verify_rate_limited": "⚠️ Too many attempts. Please try again later.",
         "voice_verify_nudge": "🔒 Please send a voice message to verify your identity.",
         "voice_audio_too_short": "⚠️ Voice message too short. Please record at least 2 seconds.",
@@ -277,6 +299,31 @@ def _main_menu_markup(locale: str) -> dict[str, list[list[dict[str, str]]]]:
 
 def _cancel_keyboard(locale: str) -> dict[str, list[list[dict[str, str]]]]:
     return {"inline_keyboard": [[{"text": _msg(locale, "cancel_btn"), "callback_data": "cancel"}]]}
+
+
+def _voice_lang_keyboard() -> dict[str, list[list[dict[str, str]]]]:
+    """Language choice keyboard for voice enrollment/verification."""
+    return {"inline_keyboard": [[
+        {"text": "🇬🇧 English", "callback_data": "vlang_en"},
+        {"text": "🇮🇷 فارسی", "callback_data": "vlang_fa"},
+    ]]}
+
+
+def _voice_enroll_keyboard(locale: str) -> dict[str, list[list[dict[str, str]]]]:
+    """Enrollment message keyboard: language switch button."""
+    lang_text = "🌐 فارسی" if locale == "en" else "🌐 English"
+    other = "fa" if locale == "en" else "en"
+    return {"inline_keyboard": [[{"text": lang_text, "callback_data": f"vlang_{other}"}]]}
+
+
+def _voice_verify_keyboard(locale: str) -> dict[str, list[list[dict[str, str]]]]:
+    """Verification message keyboard: cancel + language switch."""
+    lang_text = "🌐 فارسی" if locale == "en" else "🌐 English"
+    other = "fa" if locale == "en" else "en"
+    return {"inline_keyboard": [
+        [{"text": _msg(locale, "cancel_btn"), "callback_data": "cancel"}],
+        [{"text": lang_text, "callback_data": f"vlang_{other}"}],
+    ]}
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1057,57 @@ async def _handle_endorse_back(
 # Voice enrollment / verification handlers
 # ---------------------------------------------------------------------------
 
+async def _prompt_enrollment_language(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Show language choice before starting voice enrollment."""
+    settings = get_settings()
+    total = settings.voice_enrollment_phrases_per_session
+    user.bot_state = "choosing_voice_lang"
+    user.bot_state_data = None
+    await db.commit()
+    await channel.send_message(OutboundMessage(
+        recipient_ref=message.sender_ref,
+        text=_msg(user.locale, "voice_enroll_choose_lang", total=total),
+        reply_markup=_voice_lang_keyboard(),
+    ))
+    return "voice_language_choice_prompted"
+
+
+async def _handle_voice_lang_switch(
+    user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
+) -> str:
+    """Handle vlang_en / vlang_fa callback — switch language and proceed."""
+    new_locale = (message.callback_data or "")[-2:]  # "en" or "fa"
+    if new_locale not in ("en", "fa"):
+        return "ignored"
+    user.locale = new_locale
+
+    state = user.bot_state
+
+    if state == "choosing_voice_lang":
+        # First-time language choice → start enrollment
+        await db.commit()
+        return await _start_voice_enrollment(user, message, channel, db)
+
+    if state == "enrolling_voice":
+        # Mid-enrollment language switch → reset enrollment, restart with new language phrases
+        user.bot_state = None
+        user.bot_state_data = None
+        await db.commit()
+        return await _start_voice_enrollment(user, message, channel, db)
+
+    if state == "awaiting_voice":
+        # During verification → pick new phrase in new language
+        await db.commit()
+        return await _start_voice_verification(user, message, channel, db)
+
+    # Enrolled + active session — just update locale
+    await db.commit()
+    await _send_main_menu(user.locale, message.sender_ref, channel)
+    return "locale_switched"
+
+
 async def _start_voice_enrollment(
     user: User, message: UnifiedMessage, channel: BaseChannel, db: AsyncSession,
 ) -> str:
@@ -1051,6 +1149,7 @@ async def _start_voice_enrollment(
             step=1,
             total=total,
         ),
+        reply_markup=_voice_enroll_keyboard(user.locale),
     ))
     return "voice_enrollment_started"
 
@@ -1107,6 +1206,7 @@ async def _handle_enrollment_voice(
                 step=updated_state["step"] + 1,
                 total=len(updated_state["phrase_ids"]),
             ),
+            reply_markup=_voice_enroll_keyboard(locale),
         ))
         return "voice_phrase_accepted"
 
@@ -1122,6 +1222,7 @@ async def _handle_enrollment_voice(
                 attempt=updated_state["attempt"] + 1,
                 max_attempts=settings.voice_enrollment_attempts_per_phrase,
             ),
+            reply_markup=_voice_enroll_keyboard(locale),
         ))
         return "voice_phrase_retry"
 
@@ -1132,6 +1233,7 @@ async def _handle_enrollment_voice(
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,
             text=_msg(locale, "voice_enroll_replaced", phrase=phrase_text),
+            reply_markup=_voice_enroll_keyboard(locale),
         ))
         return "voice_phrase_replaced"
 
@@ -1174,7 +1276,7 @@ async def _start_voice_verification(
     await channel.send_message(OutboundMessage(
         recipient_ref=message.sender_ref,
         text=_msg(user.locale, "voice_verify_prompt", phrase=phrase_text),
-        reply_markup=_cancel_keyboard(user.locale),
+        reply_markup=_voice_verify_keyboard(user.locale),
     ))
     return "voice_verification_prompted"
 
@@ -1184,9 +1286,16 @@ async def _handle_verification_voice(
 ) -> str:
     """Process a voice message during verification."""
     state = user.bot_state_data or {}
-    phrase_id = state.get("phrase_id")
-    if phrase_id is None:
+    phrase_id_raw = state.get("phrase_id")
+    if phrase_id_raw is None:
         return await _start_voice_verification(user, message, channel, db)
+
+    if not message.voice_file_id or not message.voice_file_id.strip():
+        await channel.send_message(OutboundMessage(
+            recipient_ref=message.sender_ref,
+            text=_msg(user.locale, "voice_enroll_error"),
+        ))
+        return "voice_audio_error"
 
     if not check_voice_rate_limit(str(user.id)):
         await channel.send_message(OutboundMessage(
@@ -1195,10 +1304,15 @@ async def _handle_verification_voice(
         ))
         return "voice_rate_limited"
 
-    result = await verify_voice(
+    try:
+        phrase_id = int(phrase_id_raw)
+    except (TypeError, ValueError):
+        return await _start_voice_verification(user, message, channel, db)
+
+    result, error_code = await verify_voice(
         user=user,
         channel=channel,
-        file_id=message.voice_file_id or "",
+        file_id=message.voice_file_id.strip(),
         duration=message.voice_duration,
         phrase_id=phrase_id,
         session=db,
@@ -1216,13 +1330,18 @@ async def _handle_verification_voice(
         return "voice_verified"
 
     if result in ("audio_error", "service_error"):
+        code = error_code or "V003"  # fallback if ever missing
         await channel.send_message(OutboundMessage(
             recipient_ref=message.sender_ref,
-            text=_msg(user.locale, "voice_enroll_error"),
+            text=_msg(user.locale, "voice_technical_error", code=code),
         ))
         return f"voice_{result}"
 
-    # reject — give new phrase for retry
+    # reject — verification failed (wrong phrase or no match); show message then new phrase
+    await channel.send_message(OutboundMessage(
+        recipient_ref=message.sender_ref,
+        text=_msg(user.locale, "voice_verify_failed"),
+    ))
     return await _start_voice_verification(user, message, channel, db)
 
 
@@ -1315,9 +1434,22 @@ async def route_message(
         if user is None:
             return "ignored"
 
+        # Language switch callbacks — allowed at any stage (before/during enrollment, during verification)
+        if message.callback_data and message.callback_data.startswith("vlang_"):
+            return await _handle_voice_lang_switch(user, message, channel, session)
+
         # Voice gate for callbacks (same as for text): require enrollment then active session
         if not user.is_voice_enrolled:
-            return await _start_voice_enrollment(user, message, channel, session)
+            if user.bot_state == "choosing_voice_lang":
+                # Waiting for language choice — re-prompt
+                await channel.send_message(OutboundMessage(
+                    recipient_ref=message.sender_ref,
+                    text=_msg(user.locale, "voice_enroll_choose_lang",
+                              total=get_settings().voice_enrollment_phrases_per_session),
+                    reply_markup=_voice_lang_keyboard(),
+                ))
+                return "voice_language_choice_prompted"
+            return await _prompt_enrollment_language(user, message, channel, session)
         if not user.is_voice_session_active:
             # Allow cancel/main to exit verification and show menu (e.g. to change language)
             if message.callback_data in {"cancel", "main"}:
@@ -1349,9 +1481,9 @@ async def route_message(
                 recipient_ref=message.sender_ref,
                 text=text,
             ))
-            # After linking, start voice enrollment
+            # After linking, show language choice before enrollment
             if linked_user is not None:
-                return await _start_voice_enrollment(linked_user, message, channel, session)
+                return await _prompt_enrollment_language(linked_user, message, channel, session)
             return "account_linked"
         if status == "user_already_linked":
             await channel.send_message(OutboundMessage(
@@ -1376,10 +1508,19 @@ async def route_message(
     if message.voice_file_id is not None:
         return await _handle_voice_message(user, message, channel, session)
 
-    # 2. Not enrolled → start voice enrollment (send first phrase so user knows what to read)
+    # 2. Not enrolled → guide through language choice → enrollment
     if not user.is_voice_enrolled:
+        if user.bot_state == "choosing_voice_lang":
+            # Waiting for language button press — re-prompt
+            await channel.send_message(OutboundMessage(
+                recipient_ref=message.sender_ref,
+                text=_msg(user.locale, "voice_enroll_choose_lang",
+                          total=get_settings().voice_enrollment_phrases_per_session),
+                reply_markup=_voice_lang_keyboard(),
+            ))
+            return "voice_language_choice_prompted"
         if user.bot_state != "enrolling_voice":
-            return await _start_voice_enrollment(user, message, channel, session)
+            return await _prompt_enrollment_language(user, message, channel, session)
         # Text during enrollment — resend current phrase so they know what to read
         state = user.bot_state_data or {}
         _, phrase_text = get_current_phrase(state, user.locale)
@@ -1392,6 +1533,7 @@ async def route_message(
                 step=state.get("step", 0) + 1,
                 total=settings.voice_enrollment_phrases_per_session,
             ),
+            reply_markup=_voice_enroll_keyboard(user.locale),
         ))
         return "voice_enrollment_nudge"
 

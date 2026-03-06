@@ -14,12 +14,15 @@ from src.db.evidence import append_evidence
 from src.models.user import User
 from src.voice.audio import AudioValidationError, download_and_validate_audio
 from src.voice.client import VoiceCloudClient
+from src.voice.errors import VoiceErrorCode
 from src.voice.phrases import get_phrase, select_phrases
 from src.voice.scoring import cosine_similarity, deserialize_embedding, voice_decision
 
 logger = logging.getLogger(__name__)
 
 VerificationResult = Literal["accept", "reject", "audio_error", "service_error"]
+# When result is audio_error or service_error, error_code is set for user/support
+VerificationOutcome = tuple[VerificationResult, VoiceErrorCode | None]
 
 
 def pick_verification_phrase(locale: str) -> tuple[int, str]:
@@ -37,24 +40,32 @@ async def verify_voice(
     duration: int | None,
     phrase_id: int,
     session: AsyncSession,
-) -> VerificationResult:
+) -> VerificationOutcome:
     """Verify a voice message against the user's stored enrollment embedding.
 
+    Returns (result, error_code). error_code is set only for audio_error/service_error.
     Updates user.voice_verified_at on accept. Logs evidence. Caller commits.
     """
     settings = get_settings()
 
     if user.voice_embedding is None:
-        return "reject"
+        return ("reject", None)
+
+    phrase_id = int(phrase_id)
 
     # Download and validate
     try:
         audio_bytes = await download_and_validate_audio(channel, file_id, duration)
-    except AudioValidationError:
-        return "audio_error"
-    except Exception:
-        logger.exception("Failed to download audio for verification")
-        return "audio_error"
+    except AudioValidationError as e:
+        logger.warning("Verification audio_error V001: validation failed (%s)", e.reason)
+        return ("audio_error", "V001")
+    except Exception as e:
+        logger.exception(
+            "Verification audio_error V002: download failed (%s: %s)",
+            type(e).__name__,
+            e,
+        )
+        return ("audio_error", "V002")
 
     # Call voice service
     client = VoiceCloudClient()
@@ -63,13 +74,25 @@ async def verify_voice(
         result = await client.process_audio(
             audio_bytes, phrase_text, language=user.locale
         )
-    except Exception:
-        logger.exception("Voice service error during verification")
-        return "service_error"
+    except Exception as e:
+        logger.exception(
+            "Verification service_error V003: process_audio failed (%s: %s)",
+            type(e).__name__,
+            e,
+        )
+        return ("service_error", "V003")
 
-    # Compare against stored embedding
-    stored_embedding = deserialize_embedding(user.voice_embedding)
-    sim = cosine_similarity(result.embedding, stored_embedding)
+    # Compare against stored embedding (may raise on dimension mismatch or bad data)
+    try:
+        stored_embedding = deserialize_embedding(user.voice_embedding)
+        sim = cosine_similarity(result.embedding, stored_embedding)
+    except Exception as e:
+        logger.exception(
+            "Verification service_error V004: scoring failed (%s: %s)",
+            type(e).__name__,
+            e,
+        )
+        return ("service_error", "V004")
 
     # Unified thresholds (ECAPA2 + GPT-4o-transcribe perform equally across EN/FA)
     trans_standard = settings.voice_transcription_score_standard
@@ -104,6 +127,6 @@ async def verify_voice(
 
     if decision == "accept":
         user.voice_verified_at = datetime.now(UTC)
-        return "accept"
+        return ("accept", None)
 
-    return "reject"
+    return ("reject", None)
