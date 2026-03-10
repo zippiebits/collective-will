@@ -110,6 +110,14 @@ async def handle_submission(
     locale = user.locale or "en"
 
     if not eligible_for_submission(user, settings.min_account_age_hours):
+        await append_evidence(
+            session=db,
+            event_type="submission_not_eligible",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "reason_code": "not_eligible"},
+        )
+        await db.commit()
         await channel.send_message(
             OutboundMessage(recipient_ref=message.sender_ref, text=_msg(locale, "not_eligible"))
         )
@@ -117,6 +125,14 @@ async def handle_submission(
 
     allowed, reason = await check_submission_rate_limit(session=db, user_id=user.id)
     if not allowed:
+        await append_evidence(
+            session=db,
+            event_type="submission_rate_limited",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "reason_code": "rate_limited", "limit_type": reason or "daily_limit"},
+        )
+        await db.commit()
         await channel.send_message(
             OutboundMessage(recipient_ref=message.sender_ref, text=_msg(locale, "rate_limit"))
         )
@@ -224,10 +240,26 @@ async def process_submission(
     not_eligible, rate_limited, pii_redact_and_resend.
     """
     if not eligible_for_submission(user, min_account_age_hours=min_account_age_hours):
+        await append_evidence(
+            session=session,
+            event_type="submission_not_eligible",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "reason_code": "not_eligible"},
+        )
+        await session.commit()
         return None, "not_eligible"
 
     allowed, reason = await check_submission_rate_limit(session=session, user_id=user.id)
     if not allowed:
+        await append_evidence(
+            session=session,
+            event_type="submission_rate_limited",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "reason_code": "rate_limited", "limit_type": reason or "daily_limit"},
+        )
+        await session.commit()
         return None, reason or "rate_limited"
 
     if detect_high_risk_pii(raw_text):

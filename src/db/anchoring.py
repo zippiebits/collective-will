@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from uuid import UUID
 
 import httpx
 from sqlalchemy import Date, DateTime, String, and_, select
@@ -89,17 +90,69 @@ async def publish_daily_merkle_root(
     if not settings.witness_api_key:
         raise ValueError("WITNESS_API_KEY is required when publication is enabled")
 
-    payload = {"day": day.isoformat(), "root": root}
+    if session is not None:
+        entity_id = await _anchor_entity_id(session, day)
+        await append_evidence(
+            session=session,
+            event_type="anchor_publish_attempted",
+            entity_type="daily_anchor",
+            entity_id=entity_id,
+            payload={"day": day.isoformat(), "merkle_root": root},
+        )
+    else:
+        from uuid import NAMESPACE_URL, uuid5
+
+        entity_id = uuid5(NAMESPACE_URL, f"daily-anchor:{day.isoformat()}")
+
+    http_payload = {"day": day.isoformat(), "root": root}
     headers = {"Authorization": f"Bearer {settings.witness_api_key}"}
-    async with httpx.AsyncClient(timeout=settings.witness_http_timeout_seconds) as client:
-        response = await client.post(f"{settings.witness_api_url}/anchors", json=payload, headers=headers)
-        response.raise_for_status()
-        receipt_value = response.json().get("id")
-        receipt = str(receipt_value) if receipt_value is not None else None
+    try:
+        async with httpx.AsyncClient(timeout=settings.witness_http_timeout_seconds) as client:
+            response = await client.post(f"{settings.witness_api_url}/anchors", json=http_payload, headers=headers)
+            response.raise_for_status()
+            receipt_value = response.json().get("id")
+            receipt = str(receipt_value) if receipt_value is not None else None
+    except Exception as exc:
+        if session is not None:
+            await append_evidence(
+                session=session,
+                event_type="anchor_publish_failed",
+                entity_type="daily_anchor",
+                entity_id=entity_id,
+                payload={"day": day.isoformat(), "merkle_root": root, "error_type": type(exc).__name__},
+            )
+        raise
 
     if session is not None:
         result = await session.execute(select(DailyAnchor).where(DailyAnchor.day == day))
         anchor = result.scalar_one_or_none()
         if anchor is not None:
             anchor.published_receipt = receipt
+        await append_evidence(
+            session=session,
+            event_type="anchor_publish_succeeded",
+            entity_type="daily_anchor",
+            entity_id=entity_id,
+            payload={"day": day.isoformat(), "merkle_root": root, "receipt": receipt or ""},
+        )
     return receipt
+
+
+async def _anchor_entity_id(session: AsyncSession, day: date) -> UUID:
+    """Resolve a stable entity_id for anchoring evidence entries.
+
+    Reuses the entity_id from the anchor_computed event for this day,
+    so all anchoring events for the same day share a consistent ID.
+    """
+    from uuid import NAMESPACE_URL, uuid5
+
+    result = await session.execute(
+        select(EvidenceLogEntry.entity_id)
+        .where(EvidenceLogEntry.event_type == "anchor_computed")
+        .order_by(EvidenceLogEntry.id.desc())
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if row is not None:
+        return row
+    return uuid5(NAMESPACE_URL, f"daily-anchor:{day.isoformat()}")

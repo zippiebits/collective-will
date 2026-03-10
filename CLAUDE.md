@@ -141,7 +141,7 @@ All LLM calls go through `LLMRouter` in `src/pipeline/llm.py`. Task tiers are co
 
 ### Evidence Hash-Chain
 
-Every significant action produces an `EvidenceLogEntry` with `SHA-256({timestamp, event_type, entity_type, entity_id, payload, prev_hash})`. The chain is append-only — no UPDATE/DELETE. The public `GET /analytics/evidence` endpoint strips PII keys (`user_id`, `email`, `account_ref`, `wa_id`) from payloads. Valid event types are enforced in `src/db/evidence.py` via `VALID_EVENT_TYPES`.
+Every significant action produces an `EvidenceLogEntry` with `SHA-256({timestamp, event_type, entity_type, entity_id, payload, prev_hash})`. The chain is append-only — no UPDATE/DELETE. The public `GET /analytics/evidence` endpoint applies recursive PII stripping + per-event visibility-tier filtering (delayed fields hidden during active voting cycles). Valid event types and their visibility specs are defined in `EVENT_CATALOG` in `src/db/evidence.py`. Receipt-eligible events (`policy_endorsed`, `vote_cast`) generate HMAC receipt tokens for user-verifiable proof of inclusion via `GET /user/dashboard/receipts`.
 
 ### Channel Abstraction
 

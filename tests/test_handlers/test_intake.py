@@ -238,7 +238,8 @@ async def test_handle_submission_llm_failure_falls_back(
 
 
 @pytest.mark.asyncio
-async def test_handle_submission_unverified_email() -> None:
+@patch("src.handlers.intake.append_evidence", new_callable=AsyncMock)
+async def test_handle_submission_unverified_email(mock_evidence: AsyncMock) -> None:
     channel = FakeChannel()
     user = _make_user(verified=False)
     db = AsyncMock()
@@ -248,10 +249,13 @@ async def test_handle_submission_unverified_email() -> None:
         await handle_submission(_make_msg(), user, channel, db)
 
     assert any(NOT_ELIGIBLE_FA in m.text for m in channel.sent)
+    mock_evidence.assert_called_once()
+    assert mock_evidence.call_args.kwargs["event_type"] == "submission_not_eligible"
 
 
 @pytest.mark.asyncio
-async def test_handle_submission_unverified_messaging() -> None:
+@patch("src.handlers.intake.append_evidence", new_callable=AsyncMock)
+async def test_handle_submission_unverified_messaging(mock_evidence: AsyncMock) -> None:
     channel = FakeChannel()
     user = _make_user(messaging_verified=False)
     db = AsyncMock()
@@ -261,6 +265,8 @@ async def test_handle_submission_unverified_messaging() -> None:
         await handle_submission(_make_msg(), user, channel, db)
 
     assert any(NOT_ELIGIBLE_FA in m.text for m in channel.sent)
+    mock_evidence.assert_called_once()
+    assert mock_evidence.call_args.kwargs["event_type"] == "submission_not_eligible"
 
 
 @pytest.mark.asyncio
@@ -269,8 +275,11 @@ async def test_handle_submission_unverified_messaging() -> None:
     new_callable=AsyncMock,
     return_value=(False, "submission_daily_limit"),
 )
+@patch("src.handlers.intake.append_evidence", new_callable=AsyncMock)
 @patch("src.handlers.intake.get_settings")
-async def test_handle_submission_rate_limited(mock_settings: MagicMock, mock_rate: AsyncMock) -> None:
+async def test_handle_submission_rate_limited(
+    mock_settings: MagicMock, mock_evidence: AsyncMock, mock_rate: AsyncMock
+) -> None:
     mock_settings.return_value.min_account_age_hours = 48
     channel = FakeChannel()
     user = _make_user()
@@ -278,6 +287,8 @@ async def test_handle_submission_rate_limited(mock_settings: MagicMock, mock_rat
 
     await handle_submission(_make_msg(), user, channel, db)
     assert any(RATE_LIMIT_FA in m.text for m in channel.sent)
+    mock_evidence.assert_called_once()
+    assert mock_evidence.call_args.kwargs["event_type"] == "submission_rate_limited"
 
 
 @pytest.mark.asyncio

@@ -191,7 +191,9 @@ async def test_record_endorsement_increments_each_time(
 @pytest.mark.asyncio
 @patch("src.handlers.voting.create_policy_endorsement", new_callable=AsyncMock)
 @patch("src.handlers.voting.get_settings")
-async def test_record_endorsement_idempotent(mock_settings: MagicMock, mock_create: AsyncMock) -> None:
+async def test_record_endorsement_idempotent(
+    mock_settings: MagicMock, mock_create: AsyncMock,
+) -> None:
     from sqlalchemy.exc import IntegrityError
 
     mock_settings.return_value.min_account_age_hours = 48
@@ -264,9 +266,11 @@ async def test_cast_vote_with_selections(
 
 
 @pytest.mark.asyncio
-async def test_cast_vote_ineligible_no_contributions() -> None:
+@patch("src.handlers.voting.append_evidence", new_callable=AsyncMock)
+async def test_cast_vote_ineligible_no_contributions(mock_evidence: AsyncMock) -> None:
     user = _make_user(contribution_count=0)
     cycle = MagicMock()
+    cycle.id = uuid4()
     db = AsyncMock()
     vote, status = await cast_vote(
         session=db, user=user, cycle=cycle,
@@ -274,11 +278,14 @@ async def test_cast_vote_ineligible_no_contributions() -> None:
     )
     assert vote is None
     assert status == "not_eligible"
+    mock_evidence.assert_called_once()
+    assert mock_evidence.call_args.kwargs["event_type"] == "vote_not_eligible"
 
 
 @pytest.mark.asyncio
+@patch("src.handlers.voting.append_evidence", new_callable=AsyncMock)
 @patch("src.handlers.voting.can_change_vote", new_callable=AsyncMock, return_value=False)
-async def test_cast_vote_change_limit(mock_change: AsyncMock) -> None:
+async def test_cast_vote_change_limit(mock_change: AsyncMock, mock_evidence: AsyncMock) -> None:
     user = _make_user()
     cycle = MagicMock()
     cycle.id = uuid4()
@@ -289,6 +296,8 @@ async def test_cast_vote_change_limit(mock_change: AsyncMock) -> None:
     )
     assert vote is None
     assert status == "vote_change_limit_reached"
+    mock_evidence.assert_called_once()
+    assert mock_evidence.call_args.kwargs["event_type"] == "vote_change_limit_reached"
 
 
 # --- close_and_tally tests ---

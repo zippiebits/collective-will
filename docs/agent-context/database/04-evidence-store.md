@@ -147,20 +147,43 @@ Behavior:
 
 ### Event types
 
-Valid event types (enforced in `VALID_EVENT_TYPES` set in `src/db/evidence.py`):
-```
-submission_received, submission_rejected_not_policy, candidate_created,
-cluster_created, cluster_updated, cluster_merged, ballot_question_generated,
-policy_endorsed, policy_options_generated,
-vote_cast, cycle_opened, cycle_closed, user_verified,
-dispute_escalated, dispute_resolved, dispute_metrics_recorded,
-dispute_tuning_recommended, anchor_computed,
-voice_enrolled, voice_enroll_phrase_rejected, voice_verified
-```
+Valid event types are defined by `EVENT_CATALOG` in `src/db/evidence.py`. Each event type has an `EventSpec` with description, entity_type, receipt eligibility, and visibility tier fields (`public_fields`, `delayed_fields`).
 
-Removed (no backward compatibility — staging data wiped for clean slate):
-- `user_created` — redundant with `user_verified`
-- `dispute_opened` — disputes resolve immediately, only `dispute_resolved`/`dispute_escalated` logged
+**Submission lifecycle:**
+`submission_received`, `submission_not_eligible`, `submission_rate_limited`, `submission_rejected_not_policy`
+
+**Candidate lifecycle:**
+`candidate_created`
+
+**Cluster lifecycle:**
+`cluster_created`, `cluster_updated`, `cluster_merged`, `ballot_question_generated`, `policy_options_generated`
+
+**Endorsement lifecycle:**
+`policy_endorsed`, `endorsement_not_eligible`
+
+**Voting lifecycle:**
+`vote_cast`, `vote_not_eligible`, `vote_change_limit_reached`, `cycle_opened`, `cycle_closed`
+
+**Identity:**
+`user_verified`
+
+**Disputes:**
+`dispute_escalated`, `dispute_resolved`, `dispute_metrics_recorded`, `dispute_tuning_recommended`
+
+**Anchoring:**
+`anchor_computed`, `anchor_publish_attempted`, `anchor_publish_succeeded`, `anchor_publish_failed`
+
+**Voice:**
+`voice_enrolled`, `voice_enroll_phrase_rejected`, `voice_verified`
+
+### Visibility tiers
+
+Each event type defines:
+- `public_fields` — visible immediately in public API after PII stripping
+- `delayed_fields` — visible only after associated voting cycle closes (e.g., `vote_cast` selections)
+- Receipt-eligible events (`generates_receipt=True`) generate HMAC-based receipts for user-verifiable proof of inclusion
+
+`apply_visibility_tier()` in `src/db/evidence.py` applies PII stripping + delayed field filtering. The evidence API calls this per-entry with cycle-status awareness.
 
 ### Payload enrichment
 
@@ -169,12 +192,17 @@ See `CONTEXT-shared.md` → "Evidence Payload Enrichment" for the per-event-type
 
 ### PII stripping
 
-The public API endpoint (`GET /analytics/evidence`) strips `user_id`, `email`, `account_ref`, and `wa_id` from payloads via `strip_evidence_pii()` in `src/api/routes/analytics.py`. Internal DB entries retain all fields.
+The public API endpoint (`GET /analytics/evidence`) recursively strips `user_id`, `email`, `account_ref`, and `wa_id` from payloads via `strip_evidence_pii()` in `src/db/evidence.py`. The stripping is recursive (handles nested dicts and lists). Internal DB entries retain all fields.
+
+### User receipts
+
+Receipt-eligible events (endorsements, votes) generate HMAC-SHA256 receipt tokens via `generate_receipt_token()`. Users retrieve their receipted evidence entries at `GET /user/dashboard/receipts` (authenticated). Receipts prove a user's action was included in the chain without revealing their identity publicly.
 
 ### Evidence API
 
-- `GET /analytics/evidence?entity_id=&event_type=&page=&per_page=` — paginated with filtering
+- `GET /analytics/evidence?entity_id=&event_type=&page=&per_page=` — paginated with filtering, visibility-tier-aware payload redaction
 - `GET /analytics/evidence/verify` — server-side `verify_chain()` call; returns `{valid, entries_checked}`
+- `GET /user/dashboard/receipts?page=&per_page=` — authenticated; returns user's receipt-eligible evidence entries with HMAC receipt tokens
 
 ## Constraints
 

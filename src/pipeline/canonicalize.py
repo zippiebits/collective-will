@@ -306,6 +306,19 @@ async def canonicalize_batch(
     candidates: list[PolicyCandidateCreate] = []
     for idx, output in enumerate(ordered):
         if not output.get("is_valid_policy", True):
+            reason = str(output.get("rejection_reason") or "Submission is not a valid policy proposal.")
+            await append_evidence(
+                session=session,
+                event_type="submission_rejected_not_policy",
+                entity_type="submission",
+                entity_id=submissions[idx]["id"],
+                payload={
+                    "submission_id": str(submissions[idx]["id"]),
+                    "rejection_reason": reason,
+                    "model_version": str(output.get("model_version", "")),
+                    "prompt_version": str(output.get("prompt_version", "")),
+                },
+            )
             continue
 
         candidate = _build_candidate_create(output, submissions[idx]["id"])

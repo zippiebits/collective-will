@@ -12,13 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.config import Settings
 from src.db.anchoring import DailyAnchor, compute_daily_merkle_root, publish_daily_merkle_root
 from src.db.evidence import (
+    EVENT_CATALOG,
     GENESIS_PREV_HASH,
     VALID_EVENT_TYPES,
     EvidenceLogEntry,
     append_evidence,
+    apply_visibility_tier,
     canonical_json,
     compute_entry_hash,
+    generate_receipt_token,
+    strip_evidence_pii,
     verify_chain,
+    verify_receipt_token,
 )
 
 
@@ -243,6 +248,81 @@ async def test_publish_stores_receipt_when_enabled(db_session: AsyncSession) -> 
 
     anchor = (await db_session.execute(select(DailyAnchor).where(DailyAnchor.day == today_utc))).scalar_one()
     assert anchor.published_receipt == "receipt-123"
+
+
+def test_event_catalog_covers_all_valid_types() -> None:
+    """Every VALID_EVENT_TYPE must have an EVENT_CATALOG entry."""
+    assert set(EVENT_CATALOG.keys()) == VALID_EVENT_TYPES
+
+
+def test_receipt_token_generation_and_verification() -> None:
+    token = generate_receipt_token("abc123hash", "secret-key")
+    assert isinstance(token, str)
+    assert len(token) == 64
+    assert verify_receipt_token("abc123hash", "secret-key", token) is True
+    assert verify_receipt_token("abc123hash", "wrong-key", token) is False
+    assert verify_receipt_token("different-hash", "secret-key", token) is False
+
+
+def test_strip_evidence_pii_nested() -> None:
+    payload = {
+        "status": "ok",
+        "user_id": "should-be-stripped",
+        "nested": {"email": "secret@example.com", "data": "visible"},
+        "list_field": [{"wa_id": "hidden", "info": "shown"}, "plain"],
+    }
+    result = strip_evidence_pii(payload)
+    assert "user_id" not in result
+    assert result["status"] == "ok"
+    assert "email" not in result["nested"]
+    assert result["nested"]["data"] == "visible"
+    assert result["list_field"][0]["info"] == "shown"
+    assert "wa_id" not in result["list_field"][0]
+    assert result["list_field"][1] == "plain"
+
+
+def test_apply_visibility_tier_hides_delayed_fields() -> None:
+    payload = {
+        "cycle_id": "some-cycle",
+        "selections": [{"cluster_id": "c1", "option_id": "o1"}],
+        "approved_cluster_ids": ["c1"],
+    }
+    active = apply_visibility_tier("vote_cast", payload, cycle_closed=False)
+    assert "selections" not in active
+    assert "approved_cluster_ids" not in active
+    assert active["cycle_id"] == "some-cycle"
+
+    closed = apply_visibility_tier("vote_cast", payload, cycle_closed=True)
+    assert "selections" in closed
+    assert "approved_cluster_ids" in closed
+
+
+def test_apply_visibility_tier_strips_pii() -> None:
+    payload = {"user_id": "uid", "cluster_id": "cid"}
+    result = apply_visibility_tier("policy_endorsed", payload)
+    assert "user_id" not in result
+    assert result["cluster_id"] == "cid"
+
+
+@pytest.mark.asyncio
+async def test_new_event_types_accepted(db_session: AsyncSession) -> None:
+    """All new event types from the audit ledger plan should be accepted."""
+    new_types = [
+        "submission_not_eligible",
+        "submission_rate_limited",
+        "endorsement_not_eligible",
+        "vote_not_eligible",
+        "vote_change_limit_reached",
+        "anchor_publish_attempted",
+        "anchor_publish_succeeded",
+        "anchor_publish_failed",
+    ]
+    for event_type in new_types:
+        await append_evidence(db_session, event_type, "test", uuid4(), {"test": True})
+    await db_session.commit()
+    valid, checked = await verify_chain(db_session)
+    assert valid is True
+    assert checked == len(new_types)
 
 
 @pytest.mark.asyncio

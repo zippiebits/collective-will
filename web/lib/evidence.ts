@@ -63,6 +63,8 @@ export async function verifyChain(entries: EvidenceEntry[]): Promise<{valid: boo
 
 const DELIBERATION_EVENT_TYPES = new Set([
   "submission_received",
+  "submission_not_eligible",
+  "submission_rate_limited",
   "submission_rejected_not_policy",
   "candidate_created",
   "cluster_created",
@@ -71,7 +73,10 @@ const DELIBERATION_EVENT_TYPES = new Set([
   "ballot_question_generated",
   "policy_options_generated",
   "vote_cast",
+  "vote_not_eligible",
+  "vote_change_limit_reached",
   "policy_endorsed",
+  "endorsement_not_eligible",
   "cycle_opened",
   "cycle_closed",
   "dispute_escalated",
@@ -85,12 +90,12 @@ export function isDeliberationEvent(eventType: string): boolean {
 export type FilterCategory = "submissions" | "policies" | "votes" | "disputes" | "users" | "system";
 
 export const EVENT_CATEGORIES: Record<FilterCategory, string[]> = {
-  submissions: ["submission_received", "submission_rejected_not_policy"],
+  submissions: ["submission_received", "submission_not_eligible", "submission_rate_limited", "submission_rejected_not_policy"],
   policies: ["candidate_created", "cluster_created", "cluster_updated", "cluster_merged", "ballot_question_generated", "policy_options_generated"],
-  votes: ["vote_cast", "policy_endorsed", "cycle_opened", "cycle_closed"],
+  votes: ["vote_cast", "vote_not_eligible", "vote_change_limit_reached", "policy_endorsed", "endorsement_not_eligible", "cycle_opened", "cycle_closed"],
   disputes: ["dispute_escalated", "dispute_resolved"],
   users: ["user_verified"],
-  system: ["anchor_computed", "dispute_metrics_recorded", "dispute_tuning_recommended"],
+  system: ["anchor_computed", "anchor_publish_attempted", "anchor_publish_succeeded", "anchor_publish_failed", "dispute_metrics_recorded", "dispute_tuning_recommended"],
 };
 
 function truncate(text: string, max: number): string {
@@ -115,6 +120,10 @@ export function eventDescription(
         ? t("events.submissionReceived", {text: truncate(text, 80)})
         : t("events.submissionReceivedGeneric");
     }
+    case "submission_not_eligible":
+      return t("events.submissionNotEligible");
+    case "submission_rate_limited":
+      return t("events.submissionRateLimited");
     case "submission_rejected_not_policy":
       return t("events.submissionRejectedNotPolicy");
     case "candidate_created":
@@ -150,8 +159,14 @@ export function eventDescription(
       return t("events.voteCast", {
         count: String((p.approved_cluster_ids as unknown[])?.length ?? 0),
       });
+    case "vote_not_eligible":
+      return t("events.voteNotEligible");
+    case "vote_change_limit_reached":
+      return t("events.voteChangeLimitReached");
     case "policy_endorsed":
       return t("events.policyEndorsed");
+    case "endorsement_not_eligible":
+      return t("events.endorsementNotEligible");
     case "cycle_opened":
       return t("events.cycleOpened", {
         count: String((p.cluster_ids as unknown[])?.length ?? 0),
@@ -172,6 +187,12 @@ export function eventDescription(
       return t("events.anchorComputed", {
         entryCount: String(p.entry_count ?? 0),
       });
+    case "anchor_publish_attempted":
+      return t("events.anchorPublishAttempted");
+    case "anchor_publish_succeeded":
+      return t("events.anchorPublishSucceeded");
+    case "anchor_publish_failed":
+      return t("events.anchorPublishFailed");
     case "dispute_metrics_recorded":
       return t("events.disputeMetrics");
     case "dispute_tuning_recommended":

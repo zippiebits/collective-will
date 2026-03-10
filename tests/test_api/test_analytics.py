@@ -337,6 +337,13 @@ class TestActiveBallot:
             app.dependency_overrides.pop(get_db, None)
 
 
+def _empty_active_cycles_result() -> MagicMock:
+    """Mock result for the active voting cycles query (returns no active cycles)."""
+    r = MagicMock()
+    r.all.return_value = []
+    return r
+
+
 class TestEvidence:
     def test_returns_empty_list(self) -> None:
         session = AsyncMock()
@@ -344,7 +351,7 @@ class TestEvidence:
         count_result.scalar_one.return_value = 0
         entries_result = MagicMock()
         entries_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[]))
-        session.execute.side_effect = [count_result, entries_result]
+        session.execute.side_effect = [count_result, _empty_active_cycles_result(), entries_result]
         app.dependency_overrides[get_db] = lambda: session
         try:
             client = TestClient(app)
@@ -365,7 +372,7 @@ class TestEvidence:
         count_result.scalar_one.return_value = 1
         entries_result = MagicMock()
         entries_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[entry]))
-        session.execute.side_effect = [count_result, entries_result]
+        session.execute.side_effect = [count_result, _empty_active_cycles_result(), entries_result]
         app.dependency_overrides[get_db] = lambda: session
         try:
             client = TestClient(app)
@@ -390,7 +397,7 @@ class TestEvidence:
         count_result.scalar_one.return_value = 1
         entries_result = MagicMock()
         entries_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[entry]))
-        session.execute.side_effect = [count_result, entries_result]
+        session.execute.side_effect = [count_result, _empty_active_cycles_result(), entries_result]
         app.dependency_overrides[get_db] = lambda: session
         try:
             client = TestClient(app)
@@ -402,6 +409,63 @@ class TestEvidence:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
+    def test_strips_nested_pii_from_payload(self) -> None:
+        eid = uuid4()
+        entry = _make_evidence_entry(
+            entity_id=eid,
+            payload={"status": "ok", "nested": {"user_id": "secret", "data": "visible"}},
+        )
+        session = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
+        entries_result = MagicMock()
+        entries_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[entry]))
+        session.execute.side_effect = [count_result, _empty_active_cycles_result(), entries_result]
+        app.dependency_overrides[get_db] = lambda: session
+        try:
+            client = TestClient(app)
+            response = client.get("/analytics/evidence")
+            payload = response.json()["entries"][0]["payload"]
+            assert "user_id" not in payload
+            assert payload["nested"]["data"] == "visible"
+            assert "user_id" not in payload["nested"]
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_delays_vote_selections_during_active_cycle(self) -> None:
+        """vote_cast selections should be hidden while cycle is active."""
+        cycle_id = uuid4()
+        eid = uuid4()
+        entry = _make_evidence_entry(
+            entity_id=eid,
+            event_type="vote_cast",
+            payload={
+                "cycle_id": str(cycle_id),
+                "selections": [{"cluster_id": "c1", "option_id": "o1"}],
+                "approved_cluster_ids": ["c1"],
+            },
+        )
+        session = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
+
+        active_cycles_result = MagicMock()
+        active_row = MagicMock()
+        active_row.__getitem__ = lambda self, idx: cycle_id
+        active_cycles_result.all.return_value = [active_row]
+
+        entries_result = MagicMock()
+        entries_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[entry]))
+        session.execute.side_effect = [count_result, active_cycles_result, entries_result]
+        app.dependency_overrides[get_db] = lambda: session
+        try:
+            client = TestClient(app)
+            response = client.get("/analytics/evidence")
+            payload = response.json()["entries"][0]["payload"]
+            assert "selections" not in payload
+            assert "approved_cluster_ids" not in payload
+        finally:
+            app.dependency_overrides.pop(get_db, None)
 
     def test_returns_newest_first_order(self) -> None:
         """Page 1 should contain the most recent entries (desc by id)."""
@@ -414,7 +478,7 @@ class TestEvidence:
         entries_result.scalars.return_value = MagicMock(
             all=MagicMock(return_value=[newer, older])
         )
-        session.execute.side_effect = [count_result, entries_result]
+        session.execute.side_effect = [count_result, _empty_active_cycles_result(), entries_result]
         app.dependency_overrides[get_db] = lambda: session
         try:
             client = TestClient(app)

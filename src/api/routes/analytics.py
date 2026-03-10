@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import Any, cast
 from uuid import UUID
 
@@ -8,19 +9,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.connection import get_db
-from src.db.evidence import VALID_EVENT_TYPES, EvidenceLogEntry, isoformat_z
+from src.db.evidence import VALID_EVENT_TYPES, EvidenceLogEntry, apply_visibility_tier, isoformat_z
 from src.db.evidence import verify_chain as db_verify_chain
 from src.models.cluster import Cluster
 from src.models.endorsement import PolicyEndorsement
 from src.models.policy_option import PolicyOption
 from src.models.submission import PolicyCandidate, Submission
 from src.models.vote import Vote, VotingCycle
-
-PII_PAYLOAD_KEYS = {"user_id", "email", "account_ref", "wa_id"}
-
-
-def strip_evidence_pii(payload: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in payload.items() if k not in PII_PAYLOAD_KEYS}
 
 router = APIRouter()
 
@@ -314,27 +309,38 @@ async def evidence(
     total_result = await session.execute(count_query)
     total = int(total_result.scalar_one())
 
+    active_cycle_ids: set[UUID] = set()
+    active_result = await session.execute(select(VotingCycle.id).where(VotingCycle.status == "active"))
+    for cycle_row in active_result.all():
+        active_cycle_ids.add(cycle_row[0])
+
     query = query.offset((page - 1) * per_page).limit(per_page)
     result = await session.execute(query)
     rows = result.scalars().all()
+
+    entries_out: list[dict[str, object]] = []
+    for row in rows:
+        cycle_id_raw = row.payload.get("cycle_id") if isinstance(row.payload, dict) else None
+        cycle_closed = True
+        if cycle_id_raw:
+            with contextlib.suppress(ValueError, AttributeError):
+                cycle_closed = UUID(cycle_id_raw) not in active_cycle_ids
+        entries_out.append({
+            "id": row.id,
+            "timestamp": isoformat_z(row.timestamp),
+            "event_type": row.event_type,
+            "entity_type": row.entity_type,
+            "entity_id": str(row.entity_id),
+            "payload": apply_visibility_tier(row.event_type, row.payload, cycle_closed=cycle_closed),
+            "hash": row.hash,
+            "prev_hash": row.prev_hash,
+        })
 
     return {
         "total": total,
         "page": page,
         "per_page": per_page,
-        "entries": [
-            {
-                "id": row.id,
-                "timestamp": isoformat_z(row.timestamp),
-                "event_type": row.event_type,
-                "entity_type": row.entity_type,
-                "entity_id": str(row.entity_id),
-                "payload": strip_evidence_pii(row.payload),
-                "hash": row.hash,
-                "prev_hash": row.prev_hash,
-            }
-            for row in rows
-        ],
+        "entries": entries_out,
     }
 
 

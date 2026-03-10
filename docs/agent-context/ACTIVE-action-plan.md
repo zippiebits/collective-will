@@ -988,6 +988,53 @@ Replaces local voice-service Docker container with cloud APIs. See `docs/decisio
      - New writes always encrypted when key is configured
      - Enrollment and scoring paths updated to use encrypt/decrypt
 
+### P1 — Audit Ledger Quality Pass (Phase 2: Privacy-First + Hybrid Anchoring)
+
+Design plan: `.cursor/plans/audit_ledger_roadmap_fd839307.plan.md`
+
+Goal: Complete auditable action taxonomy, privacy-preserving visibility tiers,
+user receipts, and full event coverage for every decision point.
+
+123. [done] Freeze complete auditable event taxonomy (EVENT_CATALOG)
+     - Added `EventSpec` dataclass with description, entity_type, receipt eligibility, visibility tiers
+     - 8 new event types: `submission_not_eligible`, `submission_rate_limited`,
+       `endorsement_not_eligible`, `vote_not_eligible`, `vote_change_limit_reached`,
+       `anchor_publish_attempted`, `anchor_publish_succeeded`, `anchor_publish_failed`
+       (removed `canonicalization_failed` and `endorsement_duplicate` — internal retry / no-op events that don't affect deliberation outcomes)
+     - `VALID_EVENT_TYPES` now derived from `EVENT_CATALOG` keys (single source of truth)
+
+124. [done] Instrument missing evidence logging
+     - `intake.py`: `submission_not_eligible`, `submission_rate_limited` events
+     - `voting.py`: `endorsement_not_eligible`, `vote_not_eligible`, `vote_change_limit_reached`
+     - `canonicalize.py`: `submission_rejected_not_policy` for batch-skipped items
+     - `anchoring.py`: `anchor_publish_attempted`, `anchor_publish_succeeded`, `anchor_publish_failed`
+
+125. [done] Implement privacy-preserving visibility tiers
+     - Recursive PII stripping (`strip_evidence_pii()`) handles nested dicts and lists
+     - `apply_visibility_tier()` enforces per-event delayed fields (e.g., vote selections hidden during active cycle)
+     - Evidence API queries active cycle IDs at request time for correct redaction
+
+126. [done] Implement user receipts
+     - `generate_receipt_token()` / `verify_receipt_token()`: HMAC-SHA256 stateless receipts
+     - `GET /user/dashboard/receipts`: authenticated endpoint returns receipt-eligible entries with tokens
+     - Receipt-eligible events: `policy_endorsed`, `vote_cast`
+
+127. [done] Witness publish evidence events + failure handling
+     - `anchor_publish_attempted` emitted before HTTP call
+     - `anchor_publish_succeeded` emitted on success with receipt
+     - `anchor_publish_failed` emitted on failure with error type (exception still re-raised)
+
+128. [done] Frontend evidence explorer updated
+     - All new event types added to `EVENT_CATEGORIES` and `DELIBERATION_EVENT_TYPES`
+     - `eventDescription()` covers all new events
+     - Full i18n parity (EN + FA) for all new event descriptions
+
+129. [done] Tests and documentation
+     - 509 backend tests pass (new tests: event catalog coverage, receipt generation/verification,
+       nested PII stripping, visibility tier filtering, new event type acceptance, evidence API cycle-awareness)
+     - 151 web tests pass
+     - Updated: `04-evidence-store.md` (contract + rationale), `CONTEXT-shared.md`, `08-audit-evidence-explorer.md`
+
 ### P1 — FAQ & Mission Statement Pages
 
 122. [done] Add FAQ page and landing page content

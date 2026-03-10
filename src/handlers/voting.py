@@ -133,6 +133,14 @@ async def record_endorsement(
     cluster_id: UUID,
 ) -> tuple[bool, str]:
     if not eligible_for_submission_or_endorsement(user):
+        await append_evidence(
+            session=session,
+            event_type="endorsement_not_eligible",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "cluster_id": str(cluster_id), "reason_code": "not_eligible"},
+        )
+        await session.commit()
         return False, "not_eligible"
 
     try:
@@ -169,8 +177,24 @@ async def cast_vote(
         min_account_age_hours=min_account_age_hours,
         require_contribution=require_contribution,
     ):
+        await append_evidence(
+            session=session,
+            event_type="vote_not_eligible",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "cycle_id": str(cycle.id), "reason_code": "not_eligible"},
+        )
+        await session.commit()
         return None, "not_eligible"
     if not await can_change_vote(session=session, user_id=user.id, cycle_id=cycle.id):
+        await append_evidence(
+            session=session,
+            event_type="vote_change_limit_reached",
+            entity_type="user",
+            entity_id=user.id,
+            payload={"user_id": str(user.id), "cycle_id": str(cycle.id)},
+        )
+        await session.commit()
         return None, "vote_change_limit_reached"
 
     effective_approved = approved_cluster_ids or []

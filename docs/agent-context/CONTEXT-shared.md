@@ -369,19 +369,32 @@ hash: str                           # SHA-256(canonical JSON of {timestamp,event
 prev_hash: str                      # previous entry's hash (chain)
 ```
 
-Valid event types (enforced by `VALID_EVENT_TYPES` in `src/db/evidence.py`):
+Valid event types (defined by `EVENT_CATALOG` in `src/db/evidence.py`):
 ```
-submission_received, submission_rejected_not_policy, candidate_created,
-cluster_created, cluster_updated, cluster_merged, ballot_question_generated,
-policy_endorsed, policy_options_generated,
-vote_cast, cycle_opened, cycle_closed, user_verified, dispute_escalated,
-dispute_resolved, dispute_metrics_recorded, dispute_tuning_recommended,
-anchor_computed, voice_enrolled, voice_enroll_phrase_rejected, voice_verified
+# Submission lifecycle
+submission_received, submission_not_eligible, submission_rate_limited,
+submission_rejected_not_policy,
+# Candidate lifecycle
+candidate_created,
+# Cluster lifecycle
+cluster_created, cluster_updated, cluster_merged,
+ballot_question_generated, policy_options_generated,
+# Endorsement lifecycle
+policy_endorsed, endorsement_not_eligible,
+# Voting lifecycle
+vote_cast, vote_not_eligible, vote_change_limit_reached,
+cycle_opened, cycle_closed,
+# Identity
+user_verified,
+# Disputes
+dispute_escalated, dispute_resolved, dispute_metrics_recorded,
+dispute_tuning_recommended,
+# Anchoring
+anchor_computed, anchor_publish_attempted, anchor_publish_succeeded,
+anchor_publish_failed,
+# Voice
+voice_enrolled, voice_enroll_phrase_rejected, voice_verified
 ```
-
-Removed event types (clean slate — no backward compatibility):
-- `user_created` — redundant; `user_verified` is the meaningful identity event
-- `dispute_opened` — redundant; disputes are immediately resolved, so only `dispute_resolved` (and optionally `dispute_escalated`) matter
 
 ### IPSignupLog (operational — `src/db/ip_signup_log.py`)
 
@@ -401,32 +414,52 @@ All `append_evidence` payloads include human-readable context so the evidence ch
 | Event type | Required payload fields |
 |---|---|
 | `submission_received` | `submission_id`, `user_id`, `raw_text`, `language`, `status`, `hash` (or `status`+`reason_code` for PII rejections) |
+| `submission_not_eligible` | `user_id`, `reason_code` |
+| `submission_rate_limited` | `user_id`, `reason_code`, `limit_type` |
 | `submission_rejected_not_policy` | `submission_id`, `rejection_reason`, `model_version`, `prompt_version` |
 | `candidate_created` | `submission_id`, `title`, `summary`, `stance`, `policy_topic`, `policy_key`, `confidence`, `model_version`, `prompt_version` |
-| `cluster_updated` | `summary`, `member_count`, `candidate_ids`, `model_version` |
+| `cluster_updated` | `cluster_id`, `policy_key`, `old_member_count`, `new_member_count` |
 | `cluster_merged` | `survivor_key`, `merged_key`, `merged_cluster_id`, `new_member_count` |
 | `ballot_question_generated` | `policy_key`, `ballot_question`, `member_count`, `model_version` |
 | `vote_cast` | `user_id`, `cycle_id`, `approved_cluster_ids`, `selections` (when per-policy voting) |
+| `vote_not_eligible` | `user_id`, `cycle_id`, `reason_code` |
+| `vote_change_limit_reached` | `user_id`, `cycle_id` |
 | `policy_endorsed` | `user_id`, `cluster_id` |
-| `policy_options_generated` | `cluster_id`, `option_count`, `model_version`, `option_labels` |
+| `endorsement_not_eligible` | `user_id`, `cluster_id`, `reason_code` |
+| `policy_options_generated` | `cluster_id`, `option_count`, `labels` |
 | `cycle_opened` | `cycle_id`, `cluster_ids`, `starts_at`, `ends_at`, `cycle_duration_hours` |
 | `cycle_closed` | `total_voters`, `results` |
 | `user_verified` | `user_id`, `method` |
 | `dispute_resolved` | `submission_id`, `candidate_id`, `escalated`, `confidence`, `model_version`, `resolved_title`, `resolved_summary`, `resolution_seconds` |
 | `dispute_escalated` | `threshold`, `primary_model`, `primary_confidence`, `ensemble_models`, `selected_model`, `selected_confidence` |
+| `anchor_publish_attempted` | `day`, `merkle_root` |
+| `anchor_publish_succeeded` | `day`, `merkle_root`, `receipt` |
+| `anchor_publish_failed` | `day`, `merkle_root`, `error_type` |
 
-### Evidence PII Stripping
+### Evidence PII Stripping & Visibility Tiers
 
-The public `GET /analytics/evidence` endpoint strips PII keys from payloads before serving:
-- Stripped keys: `user_id`, `email`, `account_ref`, `wa_id`
+The public `GET /analytics/evidence` endpoint applies two layers of payload redaction:
+1. **Recursive PII stripping** (`strip_evidence_pii()`) — removes `user_id`, `email`, `account_ref`, `wa_id` from payloads at any nesting level (top-level, nested dicts, list items)
+2. **Visibility-tier filtering** (`apply_visibility_tier()`) — per-event-type delayed fields (e.g., `vote_cast` selections) are hidden while the associated voting cycle is active, and revealed after the cycle closes
+
 - `raw_text` is preserved (it's the civic concern, not PII)
 - Internal evidence entries retain `user_id` for audit integrity; it's only stripped from the public API response
 - This supports coercion resistance: no transferable proof linking a user to a specific action
 
+### User Receipts
+
+Receipt-eligible events (`policy_endorsed`, `vote_cast`) generate HMAC-SHA256 receipt tokens:
+- `generate_receipt_token(entry_hash, signing_key)` creates a stateless proof of inclusion
+- Users retrieve their receipts at `GET /user/dashboard/receipts` (bearer-authenticated)
+- Receipt verification is stateless: `verify_receipt_token(entry_hash, key, token)` recomputes and compares
+- Receipts prove a user's action was recorded in the chain without revealing their identity publicly
+- Signing key: `WEB_ACCESS_TOKEN_SECRET` (backend-only)
+
 ### Evidence API Contract
 
-- `GET /analytics/evidence` — paginated, with `entity_id`, `event_type`, `page`, `per_page` query params; returns `{total, page, per_page, entries}`
+- `GET /analytics/evidence` — paginated, with `entity_id`, `event_type`, `page`, `per_page` query params; returns `{total, page, per_page, entries}` with visibility-tier-aware payload redaction
 - `GET /analytics/evidence/verify` — server-side chain verification; returns `{valid, entries_checked}`
+- `GET /user/dashboard/receipts` — authenticated; returns user's receipt-eligible evidence entries with `receipt_token` HMAC
 - Frontend evidence explorer uses server-side verify (no client-side hash recomputation); deep links to analytics pages via `entityLink()`
 
 ---

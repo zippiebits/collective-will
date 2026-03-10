@@ -63,14 +63,14 @@ Defined in `EVENT_CATEGORIES` in `web/lib/evidence.ts`:
 
 | Category | Event types |
 |---|---|
-| Submissions | `submission_received`, `submission_rejected_not_policy` |
+| Submissions | `submission_received`, `submission_not_eligible`, `submission_rate_limited`, `submission_rejected_not_policy` |
 | Policies | `candidate_created`, `cluster_created`, `cluster_updated`, `cluster_merged`, `ballot_question_generated`, `policy_options_generated` |
-| Votes | `vote_cast`, `policy_endorsed`, `cycle_opened`, `cycle_closed` |
+| Votes | `vote_cast`, `vote_not_eligible`, `vote_change_limit_reached`, `policy_endorsed`, `endorsement_not_eligible`, `cycle_opened`, `cycle_closed` |
 | Disputes | `dispute_escalated`, `dispute_resolved` |
 | Users | `user_verified` |
-| System | `anchor_computed`, `dispute_metrics_recorded`, `dispute_tuning_recommended` |
+| System | `anchor_computed`, `anchor_publish_attempted`, `anchor_publish_succeeded`, `anchor_publish_failed`, `dispute_metrics_recorded`, `dispute_tuning_recommended` |
 
-"Deliberation events" (default view) includes all of the above except System. This covers: `submission_received`, `submission_rejected_not_policy`, `candidate_created`, `cluster_created`, `cluster_updated`, `cluster_merged`, `ballot_question_generated`, `policy_options_generated`, `vote_cast`, `policy_endorsed`, `cycle_opened`, `cycle_closed`, `dispute_escalated`, `dispute_resolved`.
+"Deliberation events" (default view) includes all categories except System, covering the full user-facing audit trail.
 
 ## Constraints
 

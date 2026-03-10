@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import inspect
 import json
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -17,29 +19,193 @@ from src.db.connection import Base
 
 GENESIS_PREV_HASH = "genesis"
 EVIDENCE_CHAIN_LOCK_KEY = 704281913
-VALID_EVENT_TYPES = {
-    "submission_received",
-    "submission_rejected_not_policy",
-    "candidate_created",
-    "cluster_created",
-    "cluster_updated",
-    "cluster_merged",
-    "ballot_question_generated",
-    "policy_endorsed",
-    "vote_cast",
-    "cycle_opened",
-    "cycle_closed",
-    "user_verified",
-    "dispute_escalated",
-    "dispute_resolved",
-    "dispute_metrics_recorded",
-    "dispute_tuning_recommended",
-    "anchor_computed",
-    "policy_options_generated",
-    "voice_enrolled",
-    "voice_enroll_phrase_rejected",
-    "voice_verified",
+
+PII_PAYLOAD_KEYS = {"user_id", "email", "account_ref", "wa_id"}
+
+
+@dataclass(frozen=True, slots=True)
+class EventSpec:
+    """Metadata for one auditable event type."""
+
+    description: str
+    entity_type: str
+    generates_receipt: bool = False
+    public_fields: frozenset[str] = field(default_factory=frozenset)
+    delayed_fields: frozenset[str] = field(default_factory=frozenset)
+
+
+EVENT_CATALOG: dict[str, EventSpec] = {
+    # --- Submission lifecycle ---
+    "submission_received": EventSpec(
+        description="Submission recorded",
+        entity_type="submission",
+        public_fields=frozenset({"submission_id", "language", "status", "hash", "raw_text", "reason_code"}),
+    ),
+    "submission_not_eligible": EventSpec(
+        description="Submission rejected: user not eligible",
+        entity_type="user",
+        public_fields=frozenset({"reason_code"}),
+    ),
+    "submission_rate_limited": EventSpec(
+        description="Submission rejected: rate limit",
+        entity_type="user",
+        public_fields=frozenset({"reason_code", "limit_type"}),
+    ),
+    "submission_rejected_not_policy": EventSpec(
+        description="Submission rejected: not a policy proposal",
+        entity_type="submission",
+        public_fields=frozenset({"submission_id", "rejection_reason", "model_version", "prompt_version"}),
+    ),
+    # --- Candidate lifecycle ---
+    "candidate_created": EventSpec(
+        description="Policy candidate created from submission",
+        entity_type="submission",
+        public_fields=frozenset({
+            "submission_id", "title", "summary", "stance",
+            "policy_topic", "policy_key", "confidence", "model_version", "prompt_version",
+        }),
+    ),
+    # --- Cluster lifecycle ---
+    "cluster_created": EventSpec(
+        description="New policy cluster formed",
+        entity_type="cluster",
+        public_fields=frozenset({"cluster_id", "policy_key", "policy_topic", "member_count"}),
+    ),
+    "cluster_updated": EventSpec(
+        description="Cluster membership changed",
+        entity_type="cluster",
+        public_fields=frozenset({"cluster_id", "policy_key", "old_member_count", "new_member_count"}),
+    ),
+    "cluster_merged": EventSpec(
+        description="Clusters merged during normalization",
+        entity_type="cluster",
+        public_fields=frozenset({"survivor_key", "merged_key", "merged_cluster_id", "new_member_count"}),
+    ),
+    "ballot_question_generated": EventSpec(
+        description="Ballot question generated for cluster",
+        entity_type="cluster",
+        public_fields=frozenset({"policy_key", "ballot_question", "member_count", "model_version"}),
+    ),
+    "policy_options_generated": EventSpec(
+        description="Stance options generated for cluster",
+        entity_type="cluster",
+        public_fields=frozenset({"cluster_id", "option_count", "labels", "model_version"}),
+    ),
+    # --- Endorsement lifecycle ---
+    "policy_endorsed": EventSpec(
+        description="User endorsed a policy cluster",
+        entity_type="policy_endorsement",
+        generates_receipt=True,
+        public_fields=frozenset({"cluster_id"}),
+    ),
+    "endorsement_not_eligible": EventSpec(
+        description="Endorsement rejected: user not eligible",
+        entity_type="user",
+        public_fields=frozenset({"reason_code"}),
+    ),
+    # --- Voting lifecycle ---
+    "vote_cast": EventSpec(
+        description="Vote recorded in active cycle",
+        entity_type="vote",
+        generates_receipt=True,
+        public_fields=frozenset({"cycle_id"}),
+        delayed_fields=frozenset({"approved_cluster_ids", "selections"}),
+    ),
+    "vote_not_eligible": EventSpec(
+        description="Vote rejected: user not eligible",
+        entity_type="user",
+        public_fields=frozenset({"reason_code", "cycle_id"}),
+    ),
+    "vote_change_limit_reached": EventSpec(
+        description="Vote change rejected: limit reached",
+        entity_type="user",
+        public_fields=frozenset({"cycle_id"}),
+    ),
+    "cycle_opened": EventSpec(
+        description="Voting cycle opened",
+        entity_type="voting_cycle",
+        public_fields=frozenset({
+            "cycle_id", "cluster_ids", "starts_at", "ends_at", "cycle_duration_hours",
+        }),
+    ),
+    "cycle_closed": EventSpec(
+        description="Voting cycle closed and tallied",
+        entity_type="voting_cycle",
+        public_fields=frozenset({"total_voters", "results"}),
+    ),
+    # --- Identity ---
+    "user_verified": EventSpec(
+        description="User identity verified",
+        entity_type="user",
+        public_fields=frozenset({"method"}),
+    ),
+    # --- Disputes ---
+    "dispute_escalated": EventSpec(
+        description="Dispute escalated to ensemble",
+        entity_type="submission",
+        public_fields=frozenset({
+            "threshold", "primary_model", "primary_confidence",
+            "ensemble_models", "selected_model", "selected_confidence",
+        }),
+    ),
+    "dispute_resolved": EventSpec(
+        description="Dispute resolved by automated review",
+        entity_type="submission",
+        public_fields=frozenset({
+            "submission_id", "candidate_id", "escalated", "confidence",
+            "model_version", "resolved_title", "resolved_summary", "resolution_seconds",
+        }),
+    ),
+    "dispute_metrics_recorded": EventSpec(
+        description="Dispute metrics checkpoint recorded",
+        entity_type="system",
+        public_fields=frozenset({"period", "total_disputes", "escalation_rate", "avg_resolution_seconds"}),
+    ),
+    "dispute_tuning_recommended": EventSpec(
+        description="Model/policy tuning recommended based on dispute metrics",
+        entity_type="system",
+        public_fields=frozenset({"reason", "metrics"}),
+    ),
+    # --- Anchoring ---
+    "anchor_computed": EventSpec(
+        description="Daily Merkle root computed",
+        entity_type="daily_anchor",
+        public_fields=frozenset({"day", "merkle_root", "entry_count"}),
+    ),
+    "anchor_publish_attempted": EventSpec(
+        description="Witness publication attempted",
+        entity_type="daily_anchor",
+        public_fields=frozenset({"day", "merkle_root"}),
+    ),
+    "anchor_publish_succeeded": EventSpec(
+        description="Witness publication succeeded",
+        entity_type="daily_anchor",
+        public_fields=frozenset({"day", "merkle_root", "receipt"}),
+    ),
+    "anchor_publish_failed": EventSpec(
+        description="Witness publication failed",
+        entity_type="daily_anchor",
+        public_fields=frozenset({"day", "merkle_root", "error_type"}),
+    ),
+    # --- Voice ---
+    "voice_enrolled": EventSpec(
+        description="Voice enrollment completed",
+        entity_type="user",
+        public_fields=frozenset({"phrase_count", "model_version"}),
+    ),
+    "voice_enroll_phrase_rejected": EventSpec(
+        description="Voice enrollment phrase rejected",
+        entity_type="user",
+        public_fields=frozenset({"phrase_id", "reject_reason"}),
+    ),
+    "voice_verified": EventSpec(
+        description="Voice verification completed",
+        entity_type="user",
+        public_fields=frozenset({"result", "phrase_id", "reject_reason"}),
+    ),
 }
+
+VALID_EVENT_TYPES = set(EVENT_CATALOG.keys())
 
 
 class EvidenceLogEntry(Base):
@@ -156,3 +322,52 @@ async def verify_chain(session: AsyncSession) -> tuple[bool, int]:
         prev_hash = entry.hash
 
     return (True, len(entries))
+
+
+def generate_receipt_token(entry_hash: str, signing_key: str) -> str:
+    """Create an HMAC receipt token binding an evidence entry to a signing key.
+
+    Users receive this token as proof their action was included in the chain.
+    Verification is stateless: recompute HMAC and compare.
+    """
+    return hmac.new(
+        signing_key.encode("utf-8"), entry_hash.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
+def verify_receipt_token(entry_hash: str, signing_key: str, token: str) -> bool:
+    expected = generate_receipt_token(entry_hash, signing_key)
+    return hmac.compare_digest(expected, token)
+
+
+def strip_evidence_pii(payload: dict[str, Any]) -> dict[str, Any]:
+    """Recursively strip PII keys from evidence payload for public display."""
+    result: dict[str, Any] = {}
+    for k, v in payload.items():
+        if k in PII_PAYLOAD_KEYS:
+            continue
+        if isinstance(v, dict):
+            result[k] = strip_evidence_pii(v)
+        elif isinstance(v, list):
+            result[k] = [strip_evidence_pii(item) if isinstance(item, dict) else item for item in v]
+        else:
+            result[k] = v
+    return result
+
+
+def apply_visibility_tier(
+    event_type: str,
+    payload: dict[str, Any],
+    *,
+    cycle_closed: bool = False,
+) -> dict[str, Any]:
+    """Apply visibility-tier filtering on top of PII stripping.
+
+    - Strips PII recursively.
+    - Removes delayed fields when cycle is still active.
+    """
+    cleaned = strip_evidence_pii(payload)
+    spec = EVENT_CATALOG.get(event_type)
+    if spec and spec.delayed_fields and not cycle_closed:
+        cleaned = {k: v for k, v in cleaned.items() if k not in spec.delayed_fields}
+    return cleaned
