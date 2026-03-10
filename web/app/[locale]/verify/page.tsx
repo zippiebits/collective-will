@@ -7,7 +7,6 @@ import {signIn} from "next-auth/react";
 import Link from "next/link";
 
 import {apiPost} from "@/lib/api";
-import {setUserEmailCookie} from "@/lib/user-session";
 import {Card} from "@/components/ui";
 
 export default function VerifyPage() {
@@ -31,7 +30,11 @@ export default function VerifyPage() {
     apiPost<{status: string; email?: string; web_session_code?: string}>(`/auth/verify/${token}`, {})
       .then(async (result) => {
         if (result.email) {
-          setUserEmailCookie(result.email);
+          await fetch("/api/user/set-email-cookie", {
+            method: "POST",
+            headers: {"content-type": "application/json"},
+            body: JSON.stringify({email: result.email}),
+          });
         }
         if (result.email && result.web_session_code) {
           const signInResult = await signIn("credentials", {

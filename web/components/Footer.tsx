@@ -28,7 +28,7 @@ export function Footer() {
               {t("telegram")}
             </a>
             <a
-              href="https://github.com/collective-will"
+              href="https://github.com/civil-whisper/collective-will"
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-gray-900 dark:hover:text-white"

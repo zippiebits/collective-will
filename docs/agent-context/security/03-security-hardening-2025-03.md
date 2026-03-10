@@ -92,9 +92,13 @@ Until `TELEGRAM_WEBHOOK_SECRET` is set, the webhook accepts all requests (backwa
 
 ---
 
+## Addressed (2026-03)
+
+- **Content-Security-Policy**: Added via `next.config.ts` `headers()` — `default-src 'self'`, `script-src 'self' 'unsafe-inline'` (required for Next.js hydration), `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `upgrade-insecure-requests`. No external script/font/connect origins allowed.
+- **HttpOnly flag on email cookie**: Moved `cw_user_email` cookie from client-side `document.cookie` to server-side Next.js API route (`/api/user/set-email-cookie`) with `httpOnly: true`, `secure: true`, `sameSite: lax`.
+
 ## Remaining Considerations (Not Yet Addressed)
 
-- **Content-Security-Policy**: Complex to configure correctly with Next.js; add after testing
 - **Evidence endpoint authentication**: Currently public by design for transparency; document threat model
-- **HttpOnly flag on email cookie**: Requires server-side cookie setting (architectural change)
 - **Database SSL enforcement**: Only relevant for remote/production database connections
+- **CSP nonce support**: Current policy uses `'unsafe-inline'` for scripts due to Next.js hydration. Consider adding nonce-based CSP via middleware for stricter protection.

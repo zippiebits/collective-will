@@ -1044,6 +1044,25 @@ user receipts, and full event coverage for every decision point.
      - FAQ content source: `docs/faq-content.md`
      - Full i18n parity (EN + FA)
 
+### P1 — Security Hardening Phase 2 (Browser Security)
+
+130. [done] Add Content-Security-Policy header
+     - `web/next.config.ts`: added `headers()` with CSP directives
+     - `default-src 'self'`, `script-src 'self' 'unsafe-inline'` (Next.js hydration needs inline),
+       `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`
+     - No external script/font/connect origins allowed
+
+131. [done] Move email cookie to HttpOnly server-side
+     - Created `web/app/api/user/set-email-cookie/route.ts` — POST sets `cw_user_email` with `httpOnly: true`, `secure: true`, `sameSite: lax`
+     - Updated `web/app/[locale]/verify/page.tsx` to call this API instead of `document.cookie`
+     - Removed client-side `setUserEmailCookie()` from `web/lib/user-session.ts`
+     - XSS can no longer read the email cookie
+
+132. [operator action needed] Set `TELEGRAM_WEBHOOK_SECRET` on staging VPS
+     - Generate: `openssl rand -hex 32`
+     - Add to `.env.secrets`, re-register webhook with Telegram `setWebhook` API
+     - Code already verifies `X-Telegram-Bot-Api-Secret-Token` in `src/api/routes/webhooks.py`
+
 ## Definition of Done (This Cycle)
 
 - No CI/CD job performs paid LLM API calls
