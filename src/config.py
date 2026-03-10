@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     voice_audio_min_duration_seconds: int = 1  # allow short phrases; technical codes only for pipeline failures
     voice_audio_max_duration_seconds: int = 10
     voice_phrases_file: str = "voice-phrases.json"
+    voice_encryption_key: str | None = None
 
     ops_console_enabled: bool = False
     ops_console_show_in_nav: bool = False
