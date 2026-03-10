@@ -21,6 +21,7 @@ export function NavBar({showOpsLink, userEmail}: NavBarProps) {
 
   const links = [
     {href: `/${locale}`, label: t("home")},
+    {href: `/${locale}/faq`, label: t("faq")},
     {href: `/${locale}/my-activity`, label: t("dashboard")},
     {href: `/${locale}/collective-concerns`, label: t("analytics")},
     {href: `/${locale}/collective-concerns/community-votes`, label: t("communityVotes")},
