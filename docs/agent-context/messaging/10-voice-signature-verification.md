@@ -34,7 +34,8 @@ Cloud-based: no local voice-service container.
 - `src/voice/scoring.py` -- `cosine_similarity`, `voice_decision` (decision matrix), `serialize_embedding`, `deserialize_embedding`, `average_embeddings`
 - `src/voice/enrollment.py` -- Multi-step enrollment state machine: `init_enrollment_state`, `start_enrollment`, `get_current_phrase`, `process_enrollment_audio`, `finalize_enrollment`; stores collected audio for model portability
 - `src/voice/verification.py` -- Session verification: `pick_verification_phrase`, `verify_voice` (returns `VerificationOutcome` tuple)
-- `src/voice/errors.py` -- `VoiceErrorCode` literal type and descriptions for user-facing technical error codes (V001–V004)
+- `src/voice/errors.py` -- `VoiceErrorCode` literal type and descriptions for technical error codes (V002–V004); duration validation uses user-facing messages, not codes
+- `src/voice/crypto.py` -- Fernet encryption/decryption for voice embeddings at rest (`VOICE_ENCRYPTION_KEY`); backward-compatible with unencrypted legacy data
 
 ### Modal serverless function
 
@@ -71,8 +72,8 @@ Cloud-based: no local voice-service container.
 | `voice_cloud_max_retries` | `2` | Retry count on cloud API failures |
 | `voice_embedding_similarity_high` | `0.45` | Unified embedding high threshold (same-speaker min ~0.57, cross-speaker max ~0.31) |
 | `voice_embedding_similarity_delta` | `0.07` | Moderate = high - delta = 0.38 |
-| `voice_transcription_score_standard` | `0.65` | Unified standard transcription threshold (EN and FA) |
-| `voice_transcription_score_strict` | `0.75` | Unified strict transcription threshold (EN and FA) |
+| `voice_transcription_score_standard` | `0.65` | Unified standard transcription threshold (relaxed from 0.70) |
+| `voice_transcription_score_strict` | `0.75` | Unified strict transcription threshold (relaxed from 0.80) |
 | `voice_enrollment_phrases_per_session` | `3` | Phrases required per enrollment |
 | `voice_enrollment_max_phrase_failures` | `3` | Total phrase failures before blocking |
 | `voice_enrollment_attempts_per_phrase` | `2` | Retries per individual phrase |
@@ -80,8 +81,9 @@ Cloud-based: no local voice-service container.
 | `voice_verification_max_attempts` | `4` | Max verification attempts per session |
 | `voice_verification_rate_limit_count` | `5` | Voice verification attempts per window |
 | `voice_verification_rate_limit_window_seconds` | `3600` | Rate limit window (1 hour) |
-| `voice_audio_min_duration_seconds` | `2` | Minimum audio length |
-| `voice_audio_max_duration_seconds` | `15` | Maximum audio length |
+| `voice_audio_min_duration_seconds` | `1` | Minimum audio length (relaxed from 2s) |
+| `voice_audio_max_duration_seconds` | `10` | Maximum audio length (reduced from 15s) |
+| `voice_encryption_key` | `""` | Fernet key for encrypting voice embeddings at rest |
 | `voice_phrases_file` | `voice-phrases.json` | Path to external phrases JSON |
 
 ### User Model Columns (`src/models/user.py`)
@@ -127,9 +129,14 @@ Computed properties on User:
 2. **Prompt**: Random phrase selected via `pick_verification_phrase`; shown with cancel + language switch buttons
 3. **Bot state**: `user.bot_state = "awaiting_voice"`
 4. **Check**: Audio processed by cloud APIs (parallel) -> `cosine_similarity` against stored embedding + transcription score -> `voice_decision` applies dual-threshold matrix
-5. **Return**: `verify_voice` returns `VerificationOutcome = tuple[VerificationResult, VoiceErrorCode | None]`. Error codes (V001–V004) shown to user for support reference.
+5. **Return**: `verify_voice` returns `VerificationOutcome = tuple[VerificationResult, VerificationErrorReason | None]` where:
+   - `VerificationResult`: `"accept"`, `"reject"`, `"audio_error"`, `"service_error"`
+   - `VerificationErrorReason`: `"too_short"` | `"too_long"` (duration), `"V002"` | `"V003"` | `"V004"` (technical), `"voice_mismatch"` | `"transcript_mismatch"` | `"both_mismatch"` (rejection reason)
+   - Duration errors → user-friendly message ("audio too short/long")
+   - Technical errors → message with code ("Error processing audio. Code: V003")
+   - Rejections → specific message per mismatch type + phrase to retry
 6. **Accept**: `voice_verified_at` updated, `voice_verified` evidence logged, user proceeds
-7. **Reject**: Failure message shown, then new phrase prompted (re-verification)
+7. **Reject**: Specific mismatch message shown (voice/transcript/both), then new phrase prompted (re-verification)
 8. **Rate limit**: `check_voice_rate_limit` (5 attempts/hour per user) checked before each attempt
 
 ### Decision Matrix (`src/voice/scoring.py: voice_decision`)
@@ -155,7 +162,7 @@ Computed properties on User:
 
 ## Constraints
 
-- Embeddings stored as raw bytes (`LargeBinary`), not in core tables that get exported
+- Embeddings stored as `LargeBinary`, encrypted at rest via Fernet when `VOICE_ENCRYPTION_KEY` is configured; backward-compatible with unencrypted legacy data
 - Evidence log entries contain only scores and phrase IDs -- never raw audio, embeddings, or biometric data
 - All voice settings config-backed via `src/config.py`
 - Enrollment audio stored in DB for model portability (~45-75 KB per user for 3 phrases)

@@ -963,6 +963,40 @@ Replaces local voice-service Docker container with cloud APIs. See `docs/decisio
      - `verify_voice` returns `VerificationOutcome` tuple with error code
      - 7 new tests in `test_commands_voice.py` (16 total)
 
+**Phase 7 — Voice Error UX & Encryption (2026-03)**
+
+119. [done] Voice error code differentiation and user-facing messages
+     - Technical error codes V002 (download), V003 (service), V004 (scoring) for pipeline failures
+     - User-friendly messages for audio duration validation (too_short / too_long)
+     - Specific rejection messages: `voice_verify_failed_voice`, `voice_verify_failed_transcript`, `voice_verify_failed_both`
+     - `verify_voice` returns `VerificationOutcome = tuple[VerificationResult, VerificationErrorReason | None]`
+     - `VoiceRejectReason` literal: `voice_mismatch`, `transcript_mismatch`, `both_mismatch`
+     - Enrollment path updated with same error handling (duration + technical codes via `_error_reason`)
+     - All i18n messages added (EN + FA) for each error path
+
+120. [done] Voice threshold tuning (relaxed for real-world audio)
+     - `voice_transcription_score_standard`: 0.70 → 0.65
+     - `voice_transcription_score_strict`: 0.80 → 0.75
+     - `voice_audio_min_duration_seconds`: 2 → 1
+     - `voice_audio_max_duration_seconds`: 15 → 10
+     - All scoring tests updated for new thresholds
+
+121. [done] Voice embedding encryption at rest
+     - `src/voice/crypto.py`: Fernet (AES-128-CBC + HMAC-SHA256) encrypt/decrypt
+     - Key via `VOICE_ENCRYPTION_KEY` env var (never in DB)
+     - Backward compatible: unencrypted legacy embeddings detected and read transparently
+     - New writes always encrypted when key is configured
+     - Enrollment and scoring paths updated to use encrypt/decrypt
+
+### P1 — FAQ & Mission Statement Pages
+
+122. [done] Add FAQ page and landing page content
+     - `web/app/[locale]/faq/page.tsx`: bilingual FAQ (Safety, How It Works, About)
+     - Landing page: mission statement blurb + safety one-liner
+     - Navigation: FAQ link in NavBar and Footer
+     - FAQ content source: `docs/faq-content.md`
+     - Full i18n parity (EN + FA)
+
 ## Definition of Done (This Cycle)
 
 - No CI/CD job performs paid LLM API calls

@@ -52,7 +52,7 @@ These are locked. Do not deviate.
 | **CORS policy** | Backend CORS allows only explicit origins (from `CORS_ALLOW_ORIGINS`), methods `GET/POST/OPTIONS`, and headers `Content-Type/Authorization`. No wildcard methods or headers. |
 | **Security headers** | Caddy sets `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on all staging responses. `Server` header is stripped. |
 | **Token consumption atomicity** | `consume_token()` in `src/db/verification_tokens.py` uses `SELECT ... FOR UPDATE` + `flush()` to prevent TOCTOU race conditions on concurrent token redemption. |
-| **Voice signature verification** | Dual verification (ECAPA2 192-dim embedding via Modal serverless + OpenAI GPT-4o-transcribe) — no local voice-service container. Transcription scoring runs in-process (word-overlap EN, subsequence+homophone FA). Enrollment: 3 phrases from pool of 200/language → averaged embedding stored as `LargeBinary`; raw audio stored in `enrollment_audio` table for model portability. Verification: 1 random phrase per session start → 30-min session window extended on Submit/Vote/Endorse. Decision matrix: unified thresholds (high sim >=0.45 + standard transcription >=0.70 -> accept; moderate sim >=0.38 + strict transcription >=0.80 -> accept). Evidence logs scores + phrase_id only (no biometric data). Implementation: `src/voice/`, `modal_functions/voice_embedding.py`. |
+| **Voice signature verification** | Dual verification (ECAPA2 192-dim embedding via Modal serverless + OpenAI GPT-4o-transcribe) — no local voice-service container. Transcription scoring runs in-process (word-overlap EN, subsequence+homophone FA). Enrollment: 3 phrases from pool of 200/language → averaged embedding encrypted at rest (Fernet AES-128-CBC + HMAC-SHA256 via `VOICE_ENCRYPTION_KEY`; backward-compatible with unencrypted legacy) and stored as `LargeBinary`; raw audio stored in `enrollment_audio` table for model portability. Verification: 1 random phrase per session start → 30-min session window extended on Submit/Vote/Endorse. Decision matrix: unified thresholds (high sim >=0.45 + standard transcription >=0.65 → accept; moderate sim >=0.38 + strict transcription >=0.75 → accept). Audio duration limits: 1s min, 10s max. Error handling: user-facing messages for duration validation (too short/long); technical error codes V002 (download), V003 (service), V004 (scoring) for pipeline failures. Reject reasons: voice_mismatch, transcript_mismatch, both_mismatch — shown as distinct user messages. Evidence logs scores + phrase_id + reject_reason only (no biometric data). Implementation: `src/voice/`, `modal_functions/voice_embedding.py`. |
 
 ### Abuse Thresholds
 
@@ -241,7 +241,7 @@ bot_state: str | None               # Current interaction state (e.g., "awaiting
 bot_state_data: dict | None         # JSONB — session data for multi-step flows (e.g., voting progress, enrollment state)
 voice_enrolled_at: datetime | None  # When voice enrollment was completed
 voice_verified_at: datetime | None  # Last successful voice verification (session expires after 30 min)
-voice_embedding: bytes | None       # 192-dim ECAPA-TDNN float32 embedding (768 bytes BYTEA)
+voice_embedding: bytes | None       # 192-dim ECAPA-TDNN float32 embedding (Fernet-encrypted when VOICE_ENCRYPTION_KEY is set; raw BYTEA otherwise)
 voice_model_version: str | None     # SpeechBrain model version (detect embedding space mismatches)
 ```
 
@@ -491,7 +491,9 @@ collective-will/
 │   │   ├── phrases.py           # 200 phrases per language (fa/en), selection
 │   │   ├── scoring.py           # Cosine similarity, decision matrix, embedding serialization
 │   │   ├── enrollment.py        # Multi-step enrollment state machine (stores audio for portability)
-│   │   └── verification.py      # Session verification against stored embedding
+│   │   ├── verification.py      # Session verification against stored embedding
+│   │   ├── crypto.py            # Fernet encryption/decryption for voice embeddings at rest
+│   │   └── errors.py            # Voice error codes (V002–V004) for pipeline failure diagnosis
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── user.py
@@ -571,6 +573,7 @@ collective-will/
 - Evidence store (hash-chain in Postgres)
 - Farsi + English UI (RTL support)
 - Audit evidence explorer
+- FAQ page (`/faq`) with safety, privacy, and how-it-works content (bilingual EN/FA)
 - Ops observability console (`/ops`) for redacted runtime diagnostics in dev/staging, with optional admin-only production mode
 - Abuse controls (rate limits, quarantine)
 
